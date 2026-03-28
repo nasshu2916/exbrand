@@ -1,3 +1,33 @@
 [tools]
 erlang="28.4.1"
 elixir="1.19.5-otp-28"
+
+[tasks.setup]
+description = "Setup the project by fetching dependencies and compiling the code"
+run = [
+  "mix deps.get",
+  "mix compile"
+]
+
+[tasks.lint]
+description = "Run code formatting, static analysis, and type checking"
+run = [
+  "mix format",
+  "mix credo --strict",
+  "mix dialyzer"
+]
+
+[tasks.test]
+description = "Run the test suite"
+run = [
+  "MIX_ENV=test mix compile",
+  "MIX_ENV=test mix test"
+]
+
+[tasks.docs]
+description = "Generate project documentation"
+run = "mix docs"
+
+[tasks.ci]
+description = "Run continuous integration tasks"
+depends = ["lint", "test"]
