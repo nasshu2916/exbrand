@@ -21,6 +21,17 @@ defmodule ExBrandTest do
     end
   end
 
+  defmodule StandaloneUserID do
+    use ExBrand, base: :integer
+  end
+
+  defmodule StandaloneEmail do
+    use ExBrand,
+      base: :string,
+      validate: &String.contains?(&1, "@"),
+      error: :invalid_email
+  end
+
   test "integer brands are distinct modules" do
     {:ok, user_id} = Types.UserID.new(1)
     {:ok, order_id} = Types.OrderID.new(1)
@@ -60,5 +71,18 @@ defmodule ExBrandTest do
 
     assert inspect(user_id) == "#UserID<1>"
     refute inspect(user_id) =~ "__value__"
+  end
+
+  test "low-level API defines standalone brand module" do
+    user_id = StandaloneUserID.new!(1)
+
+    assert StandaloneUserID.unwrap(user_id) == 1
+    assert StandaloneUserID.__base__() == :integer
+    assert inspect(user_id) == "#StandaloneUserID<1>"
+  end
+
+  test "low-level API supports validation options" do
+    assert StandaloneEmail.new("user@example.com") |> elem(0) == :ok
+    assert StandaloneEmail.new("invalid") == {:error, :invalid_email}
   end
 end

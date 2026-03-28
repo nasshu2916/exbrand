@@ -7,7 +7,7 @@ defmodule ExBrand do
         end
 
       _ ->
-        build_brand_module(__CALLER__.module, opts)
+        build_brand_inline(__CALLER__.module, opts)
     end
   end
 
@@ -78,65 +78,87 @@ defmodule ExBrand do
   end
 
   defp build_brand_module(module, opts) do
+    quote do
+      defmodule unquote(module) do
+        unquote(build_brand_body(module, opts))
+      end
+
+      unquote(build_inspect_impl(module))
+    end
+  end
+
+  defp build_brand_inline(module, opts) do
+    opts = Keyword.update!(opts, :base, &expand_base!/1)
+
+    quote do
+      unquote(build_brand_body(module, opts))
+      unquote(build_inspect_impl(module))
+    end
+  end
+
+  defp build_brand_body(_module, opts) do
     base = Keyword.fetch!(opts, :base)
     raw_type = raw_type_ast(base)
     validate = Keyword.get(opts, :validate)
     error = Keyword.get(opts, :error)
     derive = normalize_derive(Keyword.get(opts, :derive))
+
+    quote do
+      @enforce_keys [:__value__]
+      defstruct [:__value__]
+
+      if unquote(derive) do
+        @derive unquote(derive)
+      end
+
+      @type raw() :: unquote(raw_type)
+      @opaque t() :: %__MODULE__{__value__: raw()}
+
+      @base unquote(base)
+      @error_reason unquote(error)
+
+      defp __validator__, do: unquote(validate)
+
+      @spec new(raw()) :: {:ok, t()} | {:error, term()}
+      def new(value) do
+        case ExBrand.Validator.validate(value, @base, __validator__(), @error_reason) do
+          :ok -> {:ok, %__MODULE__{__value__: value}}
+          {:error, reason} -> {:error, reason}
+        end
+      end
+
+      @spec new!(raw()) :: t()
+      def new!(value) do
+        case new(value) do
+          {:ok, brand} ->
+            brand
+
+          {:error, reason} ->
+            raise ExBrand.Error, reason: reason, module: __MODULE__, value: value
+        end
+      end
+
+      @spec unwrap(t()) :: raw()
+      def unwrap(%__MODULE__{__value__: value}), do: value
+
+      @spec valid?(raw()) :: boolean()
+      def valid?(value) do
+        match?({:ok, _brand}, new(value))
+      end
+
+      @spec is_brand?(term()) :: boolean()
+      def is_brand?(%__MODULE__{}), do: true
+      def is_brand?(_), do: false
+
+      @spec __base__() :: :integer | :binary | :string
+      def __base__, do: @base
+    end
+  end
+
+  defp build_inspect_impl(module) do
     inspect_name = inspect_name(module)
 
     quote do
-      defmodule unquote(module) do
-        @enforce_keys [:__value__]
-        defstruct [:__value__]
-
-        if unquote(derive) do
-          @derive unquote(derive)
-        end
-
-        @type raw() :: unquote(raw_type)
-        @opaque t() :: %__MODULE__{__value__: raw()}
-
-        @base unquote(base)
-        @error_reason unquote(error)
-
-        defp __validator__, do: unquote(validate)
-
-        @spec new(raw()) :: {:ok, t()} | {:error, term()}
-        def new(value) do
-          case ExBrand.Validator.validate(value, @base, __validator__(), @error_reason) do
-            :ok -> {:ok, %__MODULE__{__value__: value}}
-            {:error, reason} -> {:error, reason}
-          end
-        end
-
-        @spec new!(raw()) :: t()
-        def new!(value) do
-          case new(value) do
-            {:ok, brand} ->
-              brand
-
-            {:error, reason} ->
-              raise ExBrand.Error, reason: reason, module: __MODULE__, value: value
-          end
-        end
-
-        @spec unwrap(t()) :: raw()
-        def unwrap(%__MODULE__{__value__: value}), do: value
-
-        @spec valid?(raw()) :: boolean()
-        def valid?(value) do
-          match?({:ok, _brand}, new(value))
-        end
-
-        @spec is_brand?(term()) :: boolean()
-        def is_brand?(%__MODULE__{}), do: true
-        def is_brand?(_), do: false
-
-        @spec __base__() :: :integer | :binary | :string
-        def __base__, do: @base
-      end
-
       defimpl Inspect, for: unquote(module) do
         import Inspect.Algebra
 
