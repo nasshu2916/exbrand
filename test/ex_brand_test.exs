@@ -85,4 +85,19 @@ defmodule ExBrandTest do
     assert StandaloneEmail.new("user@example.com") |> elem(0) == :ok
     assert StandaloneEmail.new("invalid") == {:error, :invalid_email}
   end
+
+  test "defbrands rejects duplicate brand names" do
+    assert_raise ArgumentError, ~r/duplicate brand definitions in defbrands: UserID/, fn ->
+      Code.compile_string("""
+      defmodule DuplicateBrands do
+        use ExBrand
+
+        defbrands do
+          brand UserID, :integer
+          brand UserID, :binary
+        end
+      end
+      """)
+    end
+  end
 end

@@ -21,6 +21,8 @@ defmodule ExBrand do
   end
 
   defmacro defbrands(do: block) do
+    ensure_unique_brands!(block)
+
     quote do
       unquote(block)
     end
@@ -44,6 +46,32 @@ defmodule ExBrand do
         {base, list}
     end
   end
+
+  defp ensure_unique_brands!(block) do
+    duplicates =
+      block
+      |> block_nodes()
+      |> Enum.flat_map(&extract_brand_name/1)
+      |> Enum.frequencies()
+      |> Enum.filter(fn {_name, count} -> count > 1 end)
+      |> Enum.map(fn {name, _count} -> name end)
+
+    case duplicates do
+      [] ->
+        :ok
+
+      names ->
+        joined = Enum.map_join(names, ", ", &inspect/1)
+        raise ArgumentError, "duplicate brand definitions in defbrands: #{joined}"
+    end
+  end
+
+  defp block_nodes({:__block__, _, nodes}), do: nodes
+  defp block_nodes(node), do: [node]
+
+  defp extract_brand_name({:brand, _, [name, _base]}), do: [expand_name!(name)]
+  defp extract_brand_name({:brand, _, [name, _base, _opts]}), do: [expand_name!(name)]
+  defp extract_brand_name(_node), do: []
 
   defp extract_block_opts({:__block__, _, nodes}) do
     Enum.map(nodes, &block_node_to_opt/1)
