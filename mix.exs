@@ -7,6 +7,7 @@ defmodule ExBrand.MixProject do
       version: "0.1.0",
       elixir: "~> 1.16",
       elixirc_options: [warnings_as_errors: true],
+      consolidate_protocols: Mix.env() == :prod,
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       dialyzer: dialyzer(),

@@ -82,7 +82,8 @@ defmodule ExBrand do
     raw_type = raw_type_ast(base)
     validate = Keyword.get(opts, :validate)
     error = Keyword.get(opts, :error)
-    derive = Keyword.get(opts, :derive)
+    derive = normalize_derive(Keyword.get(opts, :derive))
+    inspect_name = inspect_name(module)
 
     quote do
       defmodule unquote(module) do
@@ -135,10 +136,36 @@ defmodule ExBrand do
         @spec __base__() :: :integer | :binary | :string
         def __base__, do: @base
       end
+
+      defimpl Inspect, for: unquote(module) do
+        import Inspect.Algebra
+
+        def inspect(%unquote(module){__value__: value}, opts) do
+          concat(["#", unquote(inspect_name), "<", to_doc(value, opts), ">"])
+        end
+      end
     end
   end
 
   defp raw_type_ast(:integer), do: quote(do: integer())
   defp raw_type_ast(:binary), do: quote(do: binary())
   defp raw_type_ast(:string), do: quote(do: String.t())
+
+  defp normalize_derive(nil), do: nil
+
+  defp normalize_derive(derive) when is_list(derive) do
+    derive
+    |> List.wrap()
+    |> Enum.reject(&(&1 == Inspect))
+    |> case do
+      [] -> nil
+      list -> list
+    end
+  end
+
+  defp inspect_name(module) do
+    module
+    |> Module.split()
+    |> List.last()
+  end
 end

@@ -54,4 +54,11 @@ defmodule ExBrandTest do
       Types.PositiveUserID.new!(0)
     end
   end
+
+  test "inspect hides internal field names" do
+    user_id = Types.UserID.new!(1)
+
+    assert inspect(user_id) == "#UserID<1>"
+    refute inspect(user_id) =~ "__value__"
+  end
 end
