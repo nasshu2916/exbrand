@@ -1,8 +1,9 @@
 defmodule ExBrand.Validator do
-  @spec validate(term(), atom(), (term() -> term()) | nil, term() | nil) :: :ok | {:error, term()}
+  @spec validate(term(), atom(), (term() -> term()) | nil, term() | nil) ::
+          {:ok, term()} | {:error, term()}
   def validate(value, base, validator, error) do
     with :ok <- validate_base(value, base) do
-      validate_custom(value, validator, error)
+      validate_custom(value, base, validator, error)
     end
   end
 
@@ -12,21 +13,29 @@ defmodule ExBrand.Validator do
   def validate_base(value, :string) when is_binary(value), do: :ok
   def validate_base(_, _), do: {:error, :invalid_type}
 
-  @spec validate_custom(term(), (term() -> term()) | nil, term() | nil) :: :ok | {:error, term()}
-  def validate_custom(_value, nil, _error), do: :ok
+  @spec validate_custom(term(), atom(), (term() -> term()) | nil, term() | nil) ::
+          {:ok, term()} | {:error, term()}
+  def validate_custom(value, _base, nil, _error), do: {:ok, value}
 
-  def validate_custom(value, validator, error) when is_function(validator, 1) do
-    run_validator(value, validator, error)
+  def validate_custom(value, base, validator, error) when is_function(validator, 1) do
+    run_validator(value, base, validator, error)
   end
 
-  defp run_validator(value, validator, error) do
+  defp run_validator(value, base, validator, error) do
     case validator.(value) do
-      true -> :ok
+      true -> {:ok, value}
       false -> {:error, error || :invalid_value}
-      :ok -> :ok
-      {:ok, ^value} -> :ok
+      :ok -> {:ok, value}
+      {:ok, normalized_value} -> validate_normalized(normalized_value, base)
       {:error, reason} -> {:error, reason}
       other -> {:error, {:invalid_validator_result, other}}
+    end
+  end
+
+  defp validate_normalized(value, base) do
+    case validate_base(value, base) do
+      :ok -> {:ok, value}
+      {:error, :invalid_type} -> {:error, {:invalid_normalized_type, value}}
     end
   end
 end

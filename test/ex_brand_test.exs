@@ -32,6 +32,20 @@ defmodule ExBrandTest do
       error: :invalid_email
   end
 
+  defmodule NormalizedEmail do
+    use ExBrand,
+      base: :string,
+      validate: fn raw ->
+        normalized = raw |> String.trim() |> String.downcase()
+
+        if String.contains?(normalized, "@") do
+          {:ok, normalized}
+        else
+          {:error, :invalid_email}
+        end
+      end
+  end
+
   test "integer brands are distinct modules" do
     {:ok, user_id} = Types.UserID.new(1)
     {:ok, order_id} = Types.OrderID.new(1)
@@ -99,5 +113,12 @@ defmodule ExBrandTest do
       end
       """)
     end
+  end
+
+  test "validator can normalize raw value before branding" do
+    email = NormalizedEmail.new!("  USER@EXAMPLE.COM  ")
+
+    assert NormalizedEmail.unwrap(email) == "user@example.com"
+    assert inspect(email) == "#NormalizedEmail<\"user@example.com\">"
   end
 end

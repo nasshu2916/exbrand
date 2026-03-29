@@ -150,7 +150,7 @@ defmodule ExBrand do
       @spec new(raw()) :: {:ok, t()} | {:error, term()}
       def new(value) do
         case ExBrand.Validator.validate(value, @base, __validator__(), @error_reason) do
-          :ok -> {:ok, %__MODULE__{__value__: value}}
+          {:ok, normalized_value} -> {:ok, %__MODULE__{__value__: normalized_value}}
           {:error, reason} -> {:error, reason}
         end
       end
