@@ -1,13 +1,15 @@
 defmodule ExBrand do
   defmacro __using__(opts \\ []) do
-    case opts do
-      [] ->
-        quote do
-          import ExBrand, only: [defbrand: 2, defbrand: 3, defbrands: 1, brand: 2, brand: 3]
-        end
+    if Keyword.has_key?(opts, :base) do
+      build_brand_inline(__CALLER__.module, opts)
+    else
+      aliases = normalize_aliases(Keyword.get(opts, :aliases, false))
+      alias_asts = build_aliases_for_parent(__CALLER__.module, aliases)
 
-      _ ->
-        build_brand_inline(__CALLER__.module, opts)
+      quote do
+        unquote_splicing(alias_asts)
+        import ExBrand, only: [defbrand: 2, defbrand: 3, defbrands: 1, brand: 2, brand: 3]
+      end
     end
   end
 
@@ -216,6 +218,26 @@ defmodule ExBrand do
 
   defp normalize_derive(other) do
     raise ArgumentError, "derive must be a protocol or list of protocols, got: #{inspect(other)}"
+  end
+
+  defp normalize_aliases(false), do: []
+  defp normalize_aliases(nil), do: []
+
+  defp normalize_aliases(aliases) when is_list(aliases) do
+    Enum.map(aliases, &expand_name!/1)
+  end
+
+  defp normalize_aliases(other) do
+    raise ArgumentError,
+          "aliases must be false or a list of brand names, got: #{inspect(other)}"
+  end
+
+  defp build_aliases_for_parent(parent, aliases) do
+    Enum.map(aliases, fn name ->
+      quote do
+        alias unquote(Module.concat(parent, name))
+      end
+    end)
   end
 
   defp inspect_name(module) do
