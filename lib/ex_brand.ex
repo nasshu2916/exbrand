@@ -132,12 +132,12 @@ defmodule ExBrand do
     derive = normalize_derive(Keyword.get(opts, :derive))
 
     quote do
-      @enforce_keys [:__value__]
-      defstruct [:__value__]
-
       if unquote(derive) do
         @derive unquote(derive)
       end
+
+      @enforce_keys [:__value__]
+      defstruct [:__value__]
 
       @type raw() :: unquote(raw_type)
       @opaque t() :: %__MODULE__{__value__: raw()}
@@ -202,6 +202,7 @@ defmodule ExBrand do
   defp raw_type_ast(:string), do: quote(do: String.t())
 
   defp normalize_derive(nil), do: nil
+  defp normalize_derive(derive) when is_atom(derive), do: normalize_derive([derive])
 
   defp normalize_derive(derive) when is_list(derive) do
     derive
@@ -211,6 +212,10 @@ defmodule ExBrand do
       [] -> nil
       list -> list
     end
+  end
+
+  defp normalize_derive(other) do
+    raise ArgumentError, "derive must be a protocol or list of protocols, got: #{inspect(other)}"
   end
 
   defp inspect_name(module) do

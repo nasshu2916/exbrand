@@ -1,6 +1,27 @@
 defmodule ExBrandTest do
   use ExUnit.Case, async: true
 
+  defprotocol Serializable do
+    @fallback_to_any true
+    def serialize(term)
+  end
+
+  defimpl Serializable, for: Any do
+    def serialize(value), do: {:raw, value}
+
+    defmacro __deriving__(module, _struct, options) do
+      tag = Keyword.get(options, :tag, :derived)
+
+      quote do
+        defimpl ExBrandTest.Serializable, for: unquote(module) do
+          def serialize(value) do
+            {unquote(tag), unquote(module).unwrap(value)}
+          end
+        end
+      end
+    end
+  end
+
   defmodule Types do
     use ExBrand
 
@@ -44,6 +65,12 @@ defmodule ExBrandTest do
           {:error, :invalid_email}
         end
       end
+  end
+
+  defmodule DerivedUserID do
+    use ExBrand,
+      base: :integer,
+      derive: [{Serializable, tag: :user_id}]
   end
 
   test "integer brands are distinct modules" do
@@ -120,5 +147,25 @@ defmodule ExBrandTest do
 
     assert NormalizedEmail.unwrap(email) == "user@example.com"
     assert inspect(email) == "#NormalizedEmail<\"user@example.com\">"
+  end
+
+  test "derive applies protocol implementations with options" do
+    user_id = DerivedUserID.new!(42)
+
+    assert Serializable.serialize(user_id) == {:user_id, 42}
+  end
+
+  test "derive option rejects unsupported shapes" do
+    assert_raise ArgumentError,
+                 ~r/derive must be a protocol or list of protocols/,
+                 fn ->
+                   Code.compile_string("""
+                   defmodule InvalidDerivedBrand do
+                     use ExBrand,
+                       base: :integer,
+                       derive: "Serializable"
+                   end
+                   """)
+                 end
   end
 end
