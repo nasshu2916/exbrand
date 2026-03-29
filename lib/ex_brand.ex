@@ -1,4 +1,19 @@
 defmodule ExBrand do
+  @moduledoc """
+  プリミティブ値に意味的な型境界を与えるための DSL を提供する。
+
+  主な使い方は 2 つある。
+
+  1. 親モジュール配下に `defbrand` / `defbrands` で定義する
+  2. standalone module に `use ExBrand, base: ...` で直接定義する
+  """
+
+  @doc """
+  ExBrand の DSL もしくは低レベル API を導入する。
+
+  `base:` がある場合は、そのモジュール自身を brand module として構築する。
+  `base:` がない場合は、`defbrand` / `defbrands` / `brand` を import する。
+  """
   defmacro __using__(opts \\ []) do
     if Keyword.has_key?(opts, :base) do
       build_brand_inline(__CALLER__.module, opts)
@@ -13,15 +28,26 @@ defmodule ExBrand do
     end
   end
 
+  @doc """
+  親モジュール配下に brand module を 1 つ定義する。
+  """
   defmacro defbrand(name, base) do
     build_nested_brand(__CALLER__.module, name, base, [])
   end
 
+  @doc """
+  親モジュール配下に option 付きの brand module を 1 つ定義する。
+  """
   defmacro defbrand(name, base, opts) do
     {normalized_base, normalized_opts} = normalize_brand_args(base, opts)
     build_nested_brand(__CALLER__.module, name, normalized_base, normalized_opts)
   end
 
+  @doc """
+  複数の brand 定義を 1 つの block にまとめる。
+
+  block 内では `brand` を使う。
+  """
   defmacro defbrands(do: block) do
     ensure_unique_brands!(block)
 
@@ -30,10 +56,16 @@ defmodule ExBrand do
     end
   end
 
+  @doc """
+  `defbrands` block の中で brand module を 1 つ定義する。
+  """
   defmacro brand(name, base) do
     build_nested_brand(__CALLER__.module, name, base, [])
   end
 
+  @doc """
+  `defbrands` block の中で option 付きの brand module を 1 つ定義する。
+  """
   defmacro brand(name, base, opts) do
     {normalized_base, normalized_opts} = normalize_brand_args(base, opts)
     build_nested_brand(__CALLER__.module, name, normalized_base, normalized_opts)
@@ -134,6 +166,13 @@ defmodule ExBrand do
     derive = normalize_derive(Keyword.get(opts, :derive))
 
     quote do
+      @moduledoc """
+      `#{inspect(__MODULE__)}` は ExBrand によって生成された brand module である。
+
+      raw 値の生成には `new/1` または `new!/1` を使い、
+      取り出しには `unwrap/1` を使う。
+      """
+
       if unquote(derive) do
         @derive unquote(derive)
       end
@@ -149,6 +188,11 @@ defmodule ExBrand do
 
       defp __validator__, do: unquote(validate)
 
+      @doc """
+      raw 値から brand 値を生成する。
+
+      validator が正規化値を返した場合は、その値を内部に保持する。
+      """
       @spec new(raw()) :: {:ok, t()} | {:error, term()}
       def new(value) do
         case ExBrand.Validator.validate(value, @base, __validator__(), @error_reason) do
@@ -157,6 +201,11 @@ defmodule ExBrand do
         end
       end
 
+      @doc """
+      `new/1` の bang 版。
+
+      生成に失敗した場合は `ExBrand.Error` を raise する。
+      """
       @spec new!(raw()) :: t()
       def new!(value) do
         case new(value) do
@@ -165,21 +214,33 @@ defmodule ExBrand do
 
           {:error, reason} ->
             raise ExBrand.Error, reason: reason, module: __MODULE__, value: value
-        end
+          end
       end
 
+      @doc """
+      brand 値から raw 値を明示的に取り出す。
+      """
       @spec unwrap(t()) :: raw()
       def unwrap(%__MODULE__{__value__: value}), do: value
 
+      @doc """
+      raw 値がその brand として受理可能かを返す。
+      """
       @spec valid?(raw()) :: boolean()
       def valid?(value) do
         match?({:ok, _brand}, new(value))
       end
 
+      @doc """
+      渡された値が当該 brand の struct かを返す。
+      """
       @spec is_brand?(term()) :: boolean()
       def is_brand?(%__MODULE__{}), do: true
       def is_brand?(_), do: false
 
+      @doc """
+      この brand の base type を返す。
+      """
       @spec __base__() :: :integer | :binary | :string
       def __base__, do: @base
     end

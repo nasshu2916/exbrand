@@ -1,6 +1,13 @@
 defmodule ExBrand.Error do
+  @moduledoc """
+  `new!/1` 系 API が失敗したときに送出される例外。
+  """
+
   defexception [:message, :reason, :module, :value]
 
+  @doc """
+  `reason`, `module`, `value` から例外を構築する。
+  """
   @impl true
   def exception(opts) do
     reason = Keyword.fetch!(opts, :reason)

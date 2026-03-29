@@ -1,4 +1,13 @@
 defmodule ExBrand.Validator do
+  @moduledoc """
+  ExBrand の validator 実行と base type 検証を担当する補助モジュール。
+
+  主に ExBrand 内部から利用される。
+  """
+
+  @doc """
+  base type と validator を順に適用し、brand に格納する raw 値を返す。
+  """
   @spec validate(term(), atom(), (term() -> term()) | nil, term() | nil) ::
           {:ok, term()} | {:error, term()}
   def validate(value, base, validator, error) do
@@ -7,12 +16,18 @@ defmodule ExBrand.Validator do
     end
   end
 
+  @doc """
+  raw 値が指定した base type に適合するかを検証する。
+  """
   @spec validate_base(term(), atom()) :: :ok | {:error, :invalid_type}
   def validate_base(value, :integer) when is_integer(value), do: :ok
   def validate_base(value, :binary) when is_binary(value), do: :ok
   def validate_base(value, :string) when is_binary(value), do: :ok
   def validate_base(_, _), do: {:error, :invalid_type}
 
+  @doc """
+  custom validator を適用し、必要なら正規化後の raw 値を返す。
+  """
   @spec validate_custom(term(), atom(), (term() -> term()) | nil, term() | nil) ::
           {:ok, term()} | {:error, term()}
   def validate_custom(value, _base, nil, _error), do: {:ok, value}
