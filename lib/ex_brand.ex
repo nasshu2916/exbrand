@@ -146,6 +146,7 @@ defmodule ExBrand do
       end
 
       unquote(build_inspect_impl(module))
+      unquote(build_string_chars_impl(module))
     end
   end
 
@@ -155,6 +156,7 @@ defmodule ExBrand do
     quote do
       unquote(build_brand_body(module, opts))
       unquote(build_inspect_impl(module))
+      unquote(build_string_chars_impl(module))
     end
   end
 
@@ -255,6 +257,16 @@ defmodule ExBrand do
 
         def inspect(%unquote(module){__value__: value}, opts) do
           concat(["#", unquote(inspect_name), "<", to_doc(value, opts), ">"])
+        end
+      end
+    end
+  end
+
+  defp build_string_chars_impl(module) do
+    quote do
+      defimpl String.Chars, for: unquote(module) do
+        def to_string(%unquote(module){__value__: value}) do
+          Kernel.to_string(value)
         end
       end
     end

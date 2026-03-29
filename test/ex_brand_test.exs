@@ -133,6 +133,14 @@ defmodule ExBrandTest do
     refute inspect(user_id) =~ "__value__"
   end
 
+  test "string chars converts brand value to string" do
+    user_id = Types.UserID.new!(42)
+    email = NormalizedEmail.new!("  USER@EXAMPLE.COM  ")
+
+    assert to_string(user_id) == "42"
+    assert to_string(email) == "user@example.com"
+  end
+
   test "low-level API defines standalone brand module" do
     user_id = StandaloneUserID.new!(1)
 
