@@ -1,3 +1,39 @@
+unless Code.ensure_loaded?(Jason.Encoder) do
+  defprotocol Jason.Encoder do
+    @fallback_to_any true
+    def encode(value, opts)
+  end
+
+  defimpl Jason.Encoder, for: Integer do
+    def encode(value, _opts), do: "int:#{value}"
+  end
+
+  defimpl Jason.Encoder, for: BitString do
+    def encode(value, _opts), do: "str:#{value}"
+  end
+
+  defimpl Jason.Encoder, for: Any do
+    def encode(value, _opts), do: "raw:#{inspect(value)}"
+  end
+end
+
+defprotocol Phoenix.Param do
+  @fallback_to_any true
+  def to_param(value)
+end
+
+defimpl Phoenix.Param, for: Integer do
+  def to_param(value), do: "id-#{value}"
+end
+
+defimpl Phoenix.Param, for: BitString do
+  def to_param(value), do: "param-#{value}"
+end
+
+defimpl Phoenix.Param, for: Any do
+  def to_param(value), do: "raw-#{inspect(value)}"
+end
+
 defmodule ExBrandTest do
   use ExUnit.Case, async: true
 
@@ -139,6 +175,35 @@ defmodule ExBrandTest do
 
     assert to_string(user_id) == "42"
     assert to_string(email) == "user@example.com"
+  end
+
+  test "jason encoder delegates to the raw value encoder" do
+    user_id = Types.UserID.new!(42)
+    email = NormalizedEmail.new!("  USER@EXAMPLE.COM  ")
+
+    if Code.ensure_loaded?(Jason) do
+      assert Jason.encode!(user_id) == Jason.encode!(42)
+      assert Jason.encode!(email) == Jason.encode!("user@example.com")
+    else
+      assert Jason.Encoder.encode(user_id, []) == Jason.Encoder.encode(42, [])
+      assert Jason.Encoder.encode(email, []) == Jason.Encoder.encode("user@example.com", [])
+    end
+  end
+
+  test "json encoder delegates to the raw value encoder" do
+    user_id = Types.UserID.new!(42)
+    email = NormalizedEmail.new!("  USER@EXAMPLE.COM  ")
+
+    assert JSON.encode!(user_id) == JSON.encode!(42)
+    assert JSON.encode!(email) == JSON.encode!("user@example.com")
+  end
+
+  test "phoenix param delegates to the raw value protocol" do
+    user_id = Types.UserID.new!(42)
+    email = NormalizedEmail.new!("  USER@EXAMPLE.COM  ")
+
+    assert Phoenix.Param.to_param(user_id) == "id-42"
+    assert Phoenix.Param.to_param(email) == "param-user@example.com"
   end
 
   test "low-level API defines standalone brand module" do

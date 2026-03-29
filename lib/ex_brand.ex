@@ -147,6 +147,9 @@ defmodule ExBrand do
 
       unquote(build_inspect_impl(module))
       unquote(build_string_chars_impl(module))
+      unquote(build_json_encoder_impl(module))
+      unquote(build_jason_encoder_impl(module))
+      unquote(build_phoenix_param_impl(module))
     end
   end
 
@@ -157,6 +160,9 @@ defmodule ExBrand do
       unquote(build_brand_body(module, opts))
       unquote(build_inspect_impl(module))
       unquote(build_string_chars_impl(module))
+      unquote(build_json_encoder_impl(module))
+      unquote(build_jason_encoder_impl(module))
+      unquote(build_phoenix_param_impl(module))
     end
   end
 
@@ -267,6 +273,42 @@ defmodule ExBrand do
       defimpl String.Chars, for: unquote(module) do
         def to_string(%unquote(module){__value__: value}) do
           Kernel.to_string(value)
+        end
+      end
+    end
+  end
+
+  defp build_jason_encoder_impl(module) do
+    quote do
+      if Code.ensure_loaded?(Jason.Encoder) do
+        defimpl Jason.Encoder, for: unquote(module) do
+          def encode(%unquote(module){__value__: value}, opts) do
+            Jason.Encoder.encode(value, opts)
+          end
+        end
+      end
+    end
+  end
+
+  defp build_json_encoder_impl(module) do
+    quote do
+      if Code.ensure_loaded?(JSON.Encoder) do
+        defimpl JSON.Encoder, for: unquote(module) do
+          def encode(%unquote(module){__value__: value}, encoder) do
+            JSON.Encoder.encode(value, encoder)
+          end
+        end
+      end
+    end
+  end
+
+  defp build_phoenix_param_impl(module) do
+    quote do
+      if Code.ensure_loaded?(Phoenix.Param) do
+        defimpl Phoenix.Param, for: unquote(module) do
+          def to_param(%unquote(module){__value__: value}) do
+            Phoenix.Param.to_param(value)
+          end
         end
       end
     end
