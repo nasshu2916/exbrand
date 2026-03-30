@@ -8,6 +8,8 @@ defmodule ExBrand do
   2. standalone module に `use ExBrand, base: ...` で直接定義する
   """
 
+  alias ExBrand.{Builder, DSL}
+
   @doc """
   ExBrand の DSL もしくは低レベル API を導入する。
 
@@ -16,10 +18,10 @@ defmodule ExBrand do
   """
   defmacro __using__(opts \\ []) do
     if Keyword.has_key?(opts, :base) do
-      build_brand_inline(__CALLER__.module, opts)
+      Builder.build_brand_inline(__CALLER__.module, opts)
     else
-      aliases = normalize_aliases(Keyword.get(opts, :aliases, false))
-      alias_asts = build_aliases_for_parent(__CALLER__.module, aliases)
+      aliases = DSL.normalize_aliases(Keyword.get(opts, :aliases, false))
+      alias_asts = DSL.build_aliases_for_parent(__CALLER__.module, aliases)
 
       quote do
         unquote_splicing(alias_asts)
@@ -32,15 +34,15 @@ defmodule ExBrand do
   親モジュール配下に brand module を 1 つ定義する。
   """
   defmacro defbrand(name, base) do
-    build_nested_brand(__CALLER__.module, name, base, [])
+    Builder.build_nested_brand(__CALLER__.module, name, base, [])
   end
 
   @doc """
   親モジュール配下に option 付きの brand module を 1 つ定義する。
   """
   defmacro defbrand(name, base, opts) do
-    {normalized_base, normalized_opts} = normalize_brand_args(base, opts)
-    build_nested_brand(__CALLER__.module, name, normalized_base, normalized_opts)
+    {normalized_base, normalized_opts} = DSL.normalize_brand_args(base, opts)
+    Builder.build_nested_brand(__CALLER__.module, name, normalized_base, normalized_opts)
   end
 
   @doc """
@@ -49,7 +51,7 @@ defmodule ExBrand do
   block 内では `brand` を使う。
   """
   defmacro defbrands(do: block) do
-    ensure_unique_brands!(block)
+    DSL.ensure_unique_brands!(block)
 
     quote do
       unquote(block)
@@ -60,304 +62,14 @@ defmodule ExBrand do
   `defbrands` block の中で brand module を 1 つ定義する。
   """
   defmacro brand(name, base) do
-    build_nested_brand(__CALLER__.module, name, base, [])
+    Builder.build_nested_brand(__CALLER__.module, name, base, [])
   end
 
   @doc """
   `defbrands` block の中で option 付きの brand module を 1 つ定義する。
   """
   defmacro brand(name, base, opts) do
-    {normalized_base, normalized_opts} = normalize_brand_args(base, opts)
-    build_nested_brand(__CALLER__.module, name, normalized_base, normalized_opts)
-  end
-
-  defp normalize_brand_args(base, opts) do
-    case opts do
-      [do: block] ->
-        {base, extract_block_opts(block)}
-
-      list when is_list(list) ->
-        {base, list}
-    end
-  end
-
-  defp ensure_unique_brands!(block) do
-    duplicates =
-      block
-      |> block_nodes()
-      |> Enum.flat_map(&extract_brand_name/1)
-      |> Enum.frequencies()
-      |> Enum.filter(fn {_name, count} -> count > 1 end)
-      |> Enum.map(fn {name, _count} -> name end)
-
-    case duplicates do
-      [] ->
-        :ok
-
-      names ->
-        joined = Enum.map_join(names, ", ", &inspect/1)
-        raise ArgumentError, "duplicate brand definitions in defbrands: #{joined}"
-    end
-  end
-
-  defp block_nodes({:__block__, _, nodes}), do: nodes
-  defp block_nodes(node), do: [node]
-
-  defp extract_brand_name({:brand, _, [name, _base]}), do: [expand_name!(name)]
-  defp extract_brand_name({:brand, _, [name, _base, _opts]}), do: [expand_name!(name)]
-  defp extract_brand_name(_node), do: []
-
-  defp extract_block_opts({:__block__, _, nodes}) do
-    Enum.map(nodes, &block_node_to_opt/1)
-  end
-
-  defp extract_block_opts(node), do: [block_node_to_opt(node)]
-
-  defp block_node_to_opt({key, _, [value]}) when key in [:validate, :error, :derive] do
-    {key, value}
-  end
-
-  defp block_node_to_opt(other) do
-    raise ArgumentError, "unsupported brand DSL node: #{Macro.to_string(other)}"
-  end
-
-  defp build_nested_brand(parent, name, base, opts) do
-    module = Module.concat(parent, expand_name!(name))
-    build_brand_module(module, Keyword.put(opts, :base, expand_base!(base)))
-  end
-
-  defp expand_name!({:__aliases__, _, parts}), do: Module.concat(parts)
-  defp expand_name!(name) when is_atom(name), do: name
-
-  defp expand_name!(other) do
-    raise ArgumentError, "brand name must be an alias or atom, got: #{Macro.to_string(other)}"
-  end
-
-  defp expand_base!(base) when base in [:integer, :binary, :string], do: base
-
-  defp expand_base!(other) do
-    raise ArgumentError, "unsupported base type: #{inspect(other)}"
-  end
-
-  defp build_brand_module(module, opts) do
-    quote do
-      defmodule unquote(module) do
-        unquote(build_brand_body(module, opts))
-      end
-
-      unquote(build_inspect_impl(module))
-      unquote(build_string_chars_impl(module))
-      unquote(build_json_encoder_impl(module))
-      unquote(build_jason_encoder_impl(module))
-      unquote(build_phoenix_param_impl(module))
-    end
-  end
-
-  defp build_brand_inline(module, opts) do
-    opts = Keyword.update!(opts, :base, &expand_base!/1)
-
-    quote do
-      unquote(build_brand_body(module, opts))
-      unquote(build_inspect_impl(module))
-      unquote(build_string_chars_impl(module))
-      unquote(build_json_encoder_impl(module))
-      unquote(build_jason_encoder_impl(module))
-      unquote(build_phoenix_param_impl(module))
-    end
-  end
-
-  defp build_brand_body(_module, opts) do
-    base = Keyword.fetch!(opts, :base)
-    raw_type = raw_type_ast(base)
-    validate = Keyword.get(opts, :validate)
-    error = Keyword.get(opts, :error)
-    derive = normalize_derive(Keyword.get(opts, :derive))
-
-    quote do
-      @moduledoc """
-      `#{inspect(__MODULE__)}` は ExBrand によって生成された brand module である。
-
-      raw 値の生成には `new/1` または `new!/1` を使い、
-      取り出しには `unwrap/1` を使う。
-      """
-
-      if unquote(derive) do
-        @derive unquote(derive)
-      end
-
-      @enforce_keys [:__value__]
-      defstruct [:__value__]
-
-      @type raw() :: unquote(raw_type)
-      @opaque t() :: %__MODULE__{__value__: raw()}
-
-      @base unquote(base)
-      @error_reason unquote(error)
-
-      defp __validator__, do: unquote(validate)
-
-      @doc """
-      raw 値から brand 値を生成する。
-
-      validator が正規化値を返した場合は、その値を内部に保持する。
-      """
-      @spec new(raw()) :: {:ok, t()} | {:error, term()}
-      def new(value) do
-        case ExBrand.Validator.validate(value, @base, __validator__(), @error_reason) do
-          {:ok, normalized_value} -> {:ok, %__MODULE__{__value__: normalized_value}}
-          {:error, reason} -> {:error, reason}
-        end
-      end
-
-      @doc """
-      `new/1` の bang 版。
-
-      生成に失敗した場合は `ExBrand.Error` を raise する。
-      """
-      @spec new!(raw()) :: t()
-      def new!(value) do
-        case new(value) do
-          {:ok, brand} ->
-            brand
-
-          {:error, reason} ->
-            raise ExBrand.Error, reason: reason, module: __MODULE__, value: value
-          end
-      end
-
-      @doc """
-      brand 値から raw 値を明示的に取り出す。
-      """
-      @spec unwrap(t()) :: raw()
-      def unwrap(%__MODULE__{__value__: value}), do: value
-
-      @doc """
-      raw 値がその brand として受理可能かを返す。
-      """
-      @spec valid?(raw()) :: boolean()
-      def valid?(value) do
-        match?({:ok, _brand}, new(value))
-      end
-
-      @doc """
-      渡された値が当該 brand の struct かを返す。
-      """
-      @spec is_brand?(term()) :: boolean()
-      def is_brand?(%__MODULE__{}), do: true
-      def is_brand?(_), do: false
-
-      @doc """
-      この brand の base type を返す。
-      """
-      @spec __base__() :: :integer | :binary | :string
-      def __base__, do: @base
-    end
-  end
-
-  defp build_inspect_impl(module) do
-    inspect_name = inspect_name(module)
-
-    quote do
-      defimpl Inspect, for: unquote(module) do
-        import Inspect.Algebra
-
-        def inspect(%unquote(module){__value__: value}, opts) do
-          concat(["#", unquote(inspect_name), "<", to_doc(value, opts), ">"])
-        end
-      end
-    end
-  end
-
-  defp build_string_chars_impl(module) do
-    quote do
-      defimpl String.Chars, for: unquote(module) do
-        def to_string(%unquote(module){__value__: value}) do
-          Kernel.to_string(value)
-        end
-      end
-    end
-  end
-
-  defp build_jason_encoder_impl(module) do
-    quote do
-      if Code.ensure_loaded?(Jason.Encoder) do
-        defimpl Jason.Encoder, for: unquote(module) do
-          def encode(%unquote(module){__value__: value}, opts) do
-            Jason.Encoder.encode(value, opts)
-          end
-        end
-      end
-    end
-  end
-
-  defp build_json_encoder_impl(module) do
-    quote do
-      if Code.ensure_loaded?(JSON.Encoder) do
-        defimpl JSON.Encoder, for: unquote(module) do
-          def encode(%unquote(module){__value__: value}, encoder) do
-            JSON.Encoder.encode(value, encoder)
-          end
-        end
-      end
-    end
-  end
-
-  defp build_phoenix_param_impl(module) do
-    quote do
-      if Code.ensure_loaded?(Phoenix.Param) do
-        defimpl Phoenix.Param, for: unquote(module) do
-          def to_param(%unquote(module){__value__: value}) do
-            Phoenix.Param.to_param(value)
-          end
-        end
-      end
-    end
-  end
-
-  defp raw_type_ast(:integer), do: quote(do: integer())
-  defp raw_type_ast(:binary), do: quote(do: binary())
-  defp raw_type_ast(:string), do: quote(do: String.t())
-
-  defp normalize_derive(nil), do: nil
-  defp normalize_derive(derive) when is_atom(derive), do: normalize_derive([derive])
-
-  defp normalize_derive(derive) when is_list(derive) do
-    derive
-    |> List.wrap()
-    |> Enum.reject(&(&1 == Inspect))
-    |> case do
-      [] -> nil
-      list -> list
-    end
-  end
-
-  defp normalize_derive(other) do
-    raise ArgumentError, "derive must be a protocol or list of protocols, got: #{inspect(other)}"
-  end
-
-  defp normalize_aliases(false), do: []
-  defp normalize_aliases(nil), do: []
-
-  defp normalize_aliases(aliases) when is_list(aliases) do
-    Enum.map(aliases, &expand_name!/1)
-  end
-
-  defp normalize_aliases(other) do
-    raise ArgumentError,
-          "aliases must be false or a list of brand names, got: #{inspect(other)}"
-  end
-
-  defp build_aliases_for_parent(parent, aliases) do
-    Enum.map(aliases, fn name ->
-      quote do
-        alias unquote(Module.concat(parent, name))
-      end
-    end)
-  end
-
-  defp inspect_name(module) do
-    module
-    |> Module.split()
-    |> List.last()
+    {normalized_base, normalized_opts} = DSL.normalize_brand_args(base, opts)
+    Builder.build_nested_brand(__CALLER__.module, name, normalized_base, normalized_opts)
   end
 end

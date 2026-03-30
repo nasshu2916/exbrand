@@ -1,0 +1,128 @@
+unless Code.ensure_loaded?(Jason.Encoder) do
+  defprotocol Jason.Encoder do
+    @fallback_to_any true
+    def encode(value, opts)
+  end
+
+  defimpl Jason.Encoder, for: Integer do
+    def encode(value, _opts), do: "int:#{value}"
+  end
+
+  defimpl Jason.Encoder, for: BitString do
+    def encode(value, _opts), do: "str:#{value}"
+  end
+
+  defimpl Jason.Encoder, for: Any do
+    def encode(value, _opts), do: "raw:#{inspect(value)}"
+  end
+end
+
+unless Code.ensure_loaded?(Phoenix.Param) do
+  defprotocol Phoenix.Param do
+    @fallback_to_any true
+    def to_param(value)
+  end
+
+  defimpl Phoenix.Param, for: Integer do
+    def to_param(value), do: "id-#{value}"
+  end
+
+  defimpl Phoenix.Param, for: BitString do
+    def to_param(value), do: "param-#{value}"
+  end
+
+  defimpl Phoenix.Param, for: Any do
+    def to_param(value), do: "raw-#{inspect(value)}"
+  end
+end
+
+defprotocol ExBrand.TestSupport.Serializable do
+  @fallback_to_any true
+  def serialize(term)
+end
+
+defimpl ExBrand.TestSupport.Serializable, for: Any do
+  def serialize(value), do: {:raw, value}
+
+  defmacro __deriving__(module, _struct, options) do
+    tag = Keyword.get(options, :tag, :derived)
+
+    quote do
+      defimpl ExBrand.TestSupport.Serializable, for: unquote(module) do
+        def serialize(value) do
+          {unquote(tag), unquote(module).unwrap(value)}
+        end
+      end
+    end
+  end
+end
+
+defmodule ExBrand.TestSupport.Fixtures.Types do
+  use ExBrand
+
+  defbrand UserID, :integer
+  defbrand OrderID, :integer
+
+  defbrand Email, :string,
+    validate: &String.contains?(&1, "@"),
+    error: :invalid_email
+
+  defbrands do
+    brand AccessToken, :binary
+
+    brand PositiveUserID, :integer do
+      validate(&(&1 > 0))
+      error(:must_be_positive)
+    end
+  end
+end
+
+defmodule ExBrand.TestSupport.Fixtures.AliasedTypes do
+  use ExBrand, aliases: [UserID, OrderID]
+
+  defbrand UserID, :integer
+  defbrand OrderID, :integer
+
+  def user_id_base, do: UserID.__base__()
+  def order_id_base, do: OrderID.__base__()
+end
+
+defmodule ExBrand.TestSupport.Fixtures.SelectivelyAliasedTypes do
+  use ExBrand, aliases: [UserID]
+
+  defbrand UserID, :integer
+  defbrand OrderID, :integer
+
+  def user_id_base, do: UserID.__base__()
+end
+
+defmodule ExBrand.TestSupport.Fixtures.StandaloneUserID do
+  use ExBrand, base: :integer
+end
+
+defmodule ExBrand.TestSupport.Fixtures.StandaloneEmail do
+  use ExBrand,
+    base: :string,
+    validate: &String.contains?(&1, "@"),
+    error: :invalid_email
+end
+
+defmodule ExBrand.TestSupport.Fixtures.NormalizedEmail do
+  use ExBrand,
+    base: :string,
+    validate: fn raw ->
+      normalized = raw |> String.trim() |> String.downcase()
+
+      if String.contains?(normalized, "@") do
+        {:ok, normalized}
+      else
+        {:error, :invalid_email}
+      end
+    end
+end
+
+defmodule ExBrand.TestSupport.Fixtures.DerivedUserID do
+  use ExBrand,
+    base: :integer,
+    derive: [{ExBrand.TestSupport.Serializable, tag: :user_id}]
+end
