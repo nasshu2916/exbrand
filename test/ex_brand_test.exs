@@ -271,17 +271,28 @@ defmodule ExBrandTest do
   end
 
   test "selected aliases do not expose non-listed brand names" do
+    parent = self()
+
+    ExUnit.CaptureIO.capture_io(:stderr, fn ->
+      modules =
+        Code.compile_string("""
+        defmodule InvalidAliasSelection do
+          use ExBrand, aliases: [UserID]
+
+          defbrand UserID, :integer
+          defbrand OrderID, :integer
+
+          def order_id_base, do: OrderID.__base__()
+        end
+        """)
+
+      send(parent, {:compiled_modules, modules})
+    end)
+
     modules =
-      Code.compile_string("""
-      defmodule InvalidAliasSelection do
-        use ExBrand, aliases: [UserID]
-
-        defbrand UserID, :integer
-        defbrand OrderID, :integer
-
-        def order_id_base, do: OrderID.__base__()
+      receive do
+        {:compiled_modules, compiled_modules} -> compiled_modules
       end
-      """)
 
     {module, _bytecode} =
       Enum.find(modules, fn {compiled_module, _bytecode} ->
