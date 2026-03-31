@@ -5,6 +5,7 @@ defmodule ExBrand.BuilderTest do
     DerivedUserID,
     NormalizedEmail,
     StandaloneEmail,
+    StandaloneGeneratedEmail,
     StandaloneUserID,
     Types
   }
@@ -47,6 +48,12 @@ defmodule ExBrand.BuilderTest do
     assert ExBrand.maybe_unwrap(nil) == nil
   end
 
+  test "gen returns configured generator expression" do
+    assert Types.UserID.gen() == nil
+    assert Types.GeneratedUserID.gen() == {:integer_generator, min: 1}
+    assert StandaloneGeneratedEmail.gen() == {:email_generator, normalize: true}
+  end
+
   test "validate option rejects invalid value" do
     assert Types.Email.new("user@example.com") |> elem(0) == :ok
     assert Types.Email.new("invalid") == {:error, :invalid_email}
@@ -79,6 +86,7 @@ defmodule ExBrand.BuilderTest do
              module: Types.UserID,
              base: :integer,
              validator: nil,
+             generator: nil,
              error: nil
            }
 
@@ -87,8 +95,19 @@ defmodule ExBrand.BuilderTest do
     assert email_meta.module == Types.Email
     assert email_meta.base == :string
     assert email_meta.error == :invalid_email
+    assert email_meta.generator == nil
     assert is_function(email_meta.validator, 1)
     assert Types.Email.__brand__() == email_meta
+  end
+
+  test "reflection API exposes configured generator metadata" do
+    assert Types.GeneratedUserID.__meta__() == %{
+             module: Types.GeneratedUserID,
+             base: :integer,
+             validator: nil,
+             generator: {:integer_generator, min: 1},
+             error: nil
+           }
   end
 
   test "validator can normalize raw value before branding" do

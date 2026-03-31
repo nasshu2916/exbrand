@@ -70,6 +70,10 @@ defmodule ExBrand.TestSupport.Fixtures.Types do
   defbrands do
     brand AccessToken, :binary
 
+    brand GeneratedUserID, :integer do
+      generator {:integer_generator, min: 1}
+    end
+
     brand PositiveUserID, :integer do
       validate(&(&1 > 0))
       error(:must_be_positive)
@@ -105,6 +109,12 @@ defmodule ExBrand.TestSupport.Fixtures.StandaloneEmail do
     base: :string,
     validate: &String.contains?(&1, "@"),
     error: :invalid_email
+end
+
+defmodule ExBrand.TestSupport.Fixtures.StandaloneGeneratedEmail do
+  use ExBrand,
+    base: :string,
+    generator: fn -> {:email_generator, normalize: true} end
 end
 
 defmodule ExBrand.TestSupport.Fixtures.NormalizedEmail do

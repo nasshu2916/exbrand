@@ -5,6 +5,11 @@ defmodule ExBrand.Builder do
 
   alias ExBrand.DSL
 
+  @doc false
+  @spec resolve_generator(term()) :: term()
+  def resolve_generator(generator) when is_function(generator, 0), do: generator.()
+  def resolve_generator(generator), do: generator
+
   @doc """
   親モジュール配下に生成する brand module の AST を返す。
   """
@@ -42,6 +47,7 @@ defmodule ExBrand.Builder do
     raw_type = raw_type_ast(base)
     validate = Keyword.get(opts, :validate)
     error = Keyword.get(opts, :error)
+    generator = Keyword.get(opts, :generator)
     derive = normalize_derive(Keyword.get(opts, :derive))
 
     quote do
@@ -64,6 +70,7 @@ defmodule ExBrand.Builder do
               module: module(),
               base: :integer | :binary | :string,
               validator: function() | nil,
+              generator: term() | nil,
               error: term() | nil
             }
       @opaque t() :: %__MODULE__{__value__: raw()}
@@ -72,6 +79,7 @@ defmodule ExBrand.Builder do
       @error_reason unquote(error)
 
       defp __validator__, do: unquote(validate)
+      defp __generator__, do: unquote(generator)
 
       @doc """
       raw 値から brand 値を生成する。
@@ -117,6 +125,14 @@ defmodule ExBrand.Builder do
       end
 
       @doc """
+      property-based testing 向けの generator を返す。
+
+      `generator:` に 0 引数関数を渡した場合は、その場で評価する。
+      """
+      @spec gen() :: term()
+      def gen, do: ExBrand.Builder.resolve_generator(__generator__())
+
+      @doc """
       渡された値が当該 brand の struct かを返す。
       """
       @spec is_brand?(term()) :: boolean()
@@ -138,6 +154,7 @@ defmodule ExBrand.Builder do
           module: __MODULE__,
           base: @base,
           validator: __validator__(),
+          generator: __generator__(),
           error: @error_reason
         }
       end

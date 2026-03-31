@@ -102,7 +102,8 @@ defmodule ExBrand.DSL do
 
   defp extract_block_opts(node), do: [block_node_to_opt(node)]
 
-  defp block_node_to_opt({key, _, [value]}) when key in [:validate, :error, :derive] do
+  defp block_node_to_opt({key, _, [value]})
+       when key in [:validate, :error, :derive, :generator] do
     {key, value}
   end
 
