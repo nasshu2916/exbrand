@@ -4,7 +4,7 @@ defmodule ExBrand.DSLTest do
   alias ExBrand.TestSupport.Fixtures.{AliasedTypes, SelectivelyAliasedTypes, Types}
 
   test "block DSL is supported" do
-    assert Types.PositiveUserID.new(10) |> elem(0) == :ok
+    assert {:ok, _brand} = Types.PositiveUserID.new(10)
     assert Types.PositiveUserID.new(0) == {:error, :must_be_positive}
   end
 
