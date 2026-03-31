@@ -59,6 +59,34 @@ defmodule ExBrand.BuilderTest do
     assert Types.Email.new("invalid") == {:error, :invalid_email}
   end
 
+  test "cast accepts valid raw value" do
+    assert {:ok, user_id} = Types.UserID.cast(1)
+    assert Types.UserID.unwrap(user_id) == 1
+  end
+
+  test "cast accepts the same brand value and keeps it valid" do
+    user_id = Types.UserID.new!(1)
+
+    assert {:ok, casted_user_id} = Types.UserID.cast(user_id)
+    assert casted_user_id == user_id
+  end
+
+  test "cast revalidates an existing brand value" do
+    forged_email = %Types.Email{__value__: "invalid"}
+
+    assert Types.Email.cast(forged_email) == {:error, :invalid_email}
+  end
+
+  test "cast rejects invalid raw value" do
+    assert Types.UserID.cast("1") == {:error, :invalid_type}
+  end
+
+  test "cast! raises custom exception on invalid value" do
+    assert_raise ExBrand.Error, fn ->
+      Types.PositiveUserID.cast!(0)
+    end
+  end
+
   test "invalid type is rejected" do
     assert Types.UserID.new("1") == {:error, :invalid_type}
   end

@@ -55,6 +55,7 @@ defmodule ExBrand.Builder do
       `#{inspect(unquote(module))}` は ExBrand によって生成された brand module である。
 
       raw 値の生成には `new/1` または `new!/1` を使い、
+      境界値の受け入れには `cast/1` または `cast!/1` を使い、
       取り出しには `unwrap/1` を使う。
       """
 
@@ -102,6 +103,36 @@ defmodule ExBrand.Builder do
       @spec new!(raw()) :: t()
       def new!(value) do
         case new(value) do
+          {:ok, brand} ->
+            brand
+
+          {:error, reason} ->
+            raise ExBrand.Error, reason: reason, module: __MODULE__, value: value
+        end
+      end
+
+      @doc """
+      raw 値または同一 brand 値を受け取り、brand 値へ正規化する。
+
+      すでに brand 値を受け取った場合も、内部 raw 値を再検証する。
+      """
+      @spec cast(raw() | t()) :: {:ok, t()} | {:error, term()}
+      def cast(%__MODULE__{} = value) do
+        value
+        |> unwrap()
+        |> new()
+      end
+
+      def cast(value), do: new(value)
+
+      @doc """
+      `cast/1` の bang 版。
+
+      変換に失敗した場合は `ExBrand.Error` を raise する。
+      """
+      @spec cast!(raw() | t()) :: t()
+      def cast!(value) do
+        case cast(value) do
           {:ok, brand} ->
             brand
 
