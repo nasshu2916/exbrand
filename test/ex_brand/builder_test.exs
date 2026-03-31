@@ -21,7 +21,9 @@ defmodule ExBrand.BuilderTest do
   end
 
   test "forged struct is not treated as a brand" do
-    refute Types.UserID.is_brand?(%Types.UserID{__value__: 1, __signature__: 0})
+    module = compile_brand_with_signature_verification(true, "SignedUserIDBrand")
+
+    refute module.is_brand?(struct(module, __value__: 1, __signature__: 0))
   end
 
   test "unwrap returns raw value" do
@@ -31,16 +33,17 @@ defmodule ExBrand.BuilderTest do
   end
 
   test "unwrap rejects forged or mutated brand value" do
-    user_id = Types.UserID.new!(1)
-    forged_user_id = %Types.UserID{__value__: 1, __signature__: 0}
+    module = compile_brand_with_signature_verification(true, "SignedUserIDForUnwrapBrand")
+    user_id = module.new!(1)
+    forged_user_id = struct(module, __value__: 1, __signature__: 0)
     mutated_user_id = %{user_id | __value__: 2}
 
     assert_raise ArgumentError, ~r/invalid forged or mutated brand value/, fn ->
-      Types.UserID.unwrap(forged_user_id)
+      module.unwrap(forged_user_id)
     end
 
     assert_raise ArgumentError, ~r/invalid forged or mutated brand value/, fn ->
-      Types.UserID.unwrap(mutated_user_id)
+      module.unwrap(mutated_user_id)
     end
   end
 
@@ -90,10 +93,22 @@ defmodule ExBrand.BuilderTest do
   end
 
   test "cast revalidates an existing brand value" do
-    forged_email = %Types.Email{__value__: "invalid", __signature__: 0}
+    module =
+      compile_brand_module_with_signature_verification(
+        true,
+        "SignedEmailForCastBrand",
+        """
+        use ExBrand,
+          base: :string,
+          validate: &String.contains?(&1, "@"),
+          error: :invalid_email
+        """
+      )
+
+    forged_email = struct(module, __value__: "invalid", __signature__: 0)
 
     assert_raise ArgumentError, ~r/invalid forged or mutated brand value/, fn ->
-      Types.Email.cast(forged_email)
+      module.cast(forged_email)
     end
   end
 
@@ -104,6 +119,27 @@ defmodule ExBrand.BuilderTest do
   test "cast! raises custom exception on invalid value" do
     assert_raise ExBrand.Error, fn ->
       Types.PositiveUserID.cast!(0)
+    end
+  end
+
+  test "signature verification is disabled by default for newly compiled brands" do
+    module = compile_brand_with_signature_verification(:unset, "SignatureDefaultDisabledBrand")
+    brand = module.new!(1)
+
+    assert module.is_brand?(brand)
+    assert module.unwrap(brand) == 1
+    assert Map.has_key?(brand, :__value__)
+    refute Map.has_key?(brand, :__signature__)
+  end
+
+  test "signature verification can be enabled via config" do
+    module = compile_brand_with_signature_verification(true, "SignatureEnabledBrand")
+    forged_brand = struct(module, __value__: 1, __signature__: 0)
+
+    refute module.is_brand?(forged_brand)
+
+    assert_raise ArgumentError, ~r/invalid forged or mutated brand value/, fn ->
+      module.unwrap(forged_brand)
     end
   end
 
@@ -202,5 +238,44 @@ defmodule ExBrand.BuilderTest do
                    end
                    """)
                  end
+  end
+
+  defp compile_brand_with_signature_verification(enabled, module_name) do
+    compile_brand_module_with_signature_verification(
+      enabled,
+      module_name,
+      "use ExBrand, base: :integer"
+    )
+  end
+
+  defp compile_brand_module_with_signature_verification(enabled, module_name, module_body) do
+    previous_value = Application.get_env(:ex_brand, :signature_verification)
+
+    case enabled do
+      :unset -> Application.delete_env(:ex_brand, :signature_verification)
+      value -> Application.put_env(:ex_brand, :signature_verification, value)
+    end
+
+    try do
+      target_module = Module.concat([module_name])
+
+      {module, _bytecode} =
+        Code.compile_string("""
+        defmodule #{module_name} do
+          #{module_body}
+        end
+        """)
+        |> Enum.find(fn {compiled_module, _bytecode} ->
+          compiled_module == target_module
+        end)
+
+      module
+    after
+      if is_nil(previous_value) do
+        Application.delete_env(:ex_brand, :signature_verification)
+      else
+        Application.put_env(:ex_brand, :signature_verification, previous_value)
+      end
+    end
   end
 end

@@ -49,7 +49,8 @@ defmodule ExBrand.Builder do
     error = Keyword.get(opts, :error)
     generator = Keyword.get(opts, :generator)
     name = normalize_name(Keyword.get(opts, :name), module)
-    secret = generate_brand_secret()
+    signature_verification = signature_verification_enabled?()
+    secret = if signature_verification, do: generate_brand_secret(), else: nil
     derive = normalize_derive(Keyword.get(opts, :derive))
 
     quote do
@@ -65,8 +66,7 @@ defmodule ExBrand.Builder do
         @derive unquote(derive)
       end
 
-      @enforce_keys [:__value__, :__signature__]
-      defstruct [:__value__, :__signature__]
+      unquote(signature_struct_ast(signature_verification))
 
       @type raw() :: unquote(raw_type)
       @type meta() :: %{
@@ -77,20 +77,21 @@ defmodule ExBrand.Builder do
               generator: term() | nil,
               error: term() | nil
             }
-      @opaque t() :: %__MODULE__{__value__: raw(), __signature__: integer()}
+      unquote(signature_type_ast(signature_verification))
 
       @base unquote(base)
       @error_reason unquote(error)
       @brand_name unquote(name)
-      @brand_secret unquote(secret)
+      @signature_verification unquote(signature_verification)
+
+      if @signature_verification do
+        @brand_secret unquote(secret)
+      end
 
       defp __validator__, do: unquote(validate)
       defp __generator__, do: unquote(generator)
-      defp __sign__(value), do: :erlang.phash2({@brand_secret, value})
 
-      defp __valid_signature__(%__MODULE__{__value__: value, __signature__: signature}) do
-        signature == __sign__(value)
-      end
+      unquote(signature_helpers_ast(signature_verification))
 
       @doc """
       raw 値から brand 値を生成する。
@@ -101,11 +102,7 @@ defmodule ExBrand.Builder do
       def new(value) do
         case ExBrand.Validator.validate(value, @base, __validator__(), @error_reason) do
           {:ok, normalized_value} ->
-            {:ok,
-             %__MODULE__{
-               __value__: normalized_value,
-               __signature__: __sign__(normalized_value)
-             }}
+            {:ok, unquote(build_brand_struct_ast(signature_verification))}
 
           {:error, reason} ->
             {:error, reason}
@@ -317,6 +314,63 @@ defmodule ExBrand.Builder do
   defp raw_type_ast(:binary), do: quote(do: binary())
   defp raw_type_ast(:string), do: quote(do: String.t())
 
+  defp signature_struct_ast(true) do
+    quote do
+      @enforce_keys [:__value__, :__signature__]
+      defstruct [:__value__, :__signature__]
+    end
+  end
+
+  defp signature_struct_ast(false) do
+    quote do
+      @enforce_keys [:__value__]
+      defstruct [:__value__]
+    end
+  end
+
+  defp signature_type_ast(true) do
+    quote do
+      @opaque t() :: %__MODULE__{__value__: raw(), __signature__: integer()}
+    end
+  end
+
+  defp signature_type_ast(false) do
+    quote do
+      @opaque t() :: %__MODULE__{__value__: raw()}
+    end
+  end
+
+  defp signature_helpers_ast(true) do
+    quote do
+      defp __sign__(value), do: :erlang.phash2({@brand_secret, value})
+
+      defp __valid_signature__(%__MODULE__{__value__: value, __signature__: signature}) do
+        signature == __sign__(value)
+      end
+    end
+  end
+
+  defp signature_helpers_ast(false) do
+    quote do
+      defp __valid_signature__(%__MODULE__{}), do: true
+    end
+  end
+
+  defp build_brand_struct_ast(true) do
+    quote do
+      %__MODULE__{
+        __value__: normalized_value,
+        __signature__: __sign__(normalized_value)
+      }
+    end
+  end
+
+  defp build_brand_struct_ast(false) do
+    quote do
+      %__MODULE__{__value__: normalized_value}
+    end
+  end
+
   defp normalize_derive(nil), do: nil
   defp normalize_derive(derive) when is_atom(derive), do: normalize_derive([derive])
 
@@ -349,5 +403,9 @@ defmodule ExBrand.Builder do
 
   defp generate_brand_secret do
     :crypto.strong_rand_bytes(32)
+  end
+
+  defp signature_verification_enabled? do
+    Application.get_env(:ex_brand, :signature_verification, false)
   end
 end

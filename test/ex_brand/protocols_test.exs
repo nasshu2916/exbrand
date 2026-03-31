@@ -60,12 +60,44 @@ defmodule ExBrand.ProtocolsTest do
   end
 
   test "protocol implementations reject forged values" do
-    forged_user_id = %Types.UserID{__value__: 1, __signature__: 0}
+    module = compile_brand_with_signature_verification(true, "SignedProtocolUserIDBrand")
+    forged_user_id = struct(module, __value__: 1, __signature__: 0)
 
     assert inspect(forged_user_id) =~ "invalid forged or mutated brand value"
 
     assert_raise ArgumentError, ~r/invalid forged or mutated brand value/, fn ->
       to_string(forged_user_id)
+    end
+  end
+
+  defp compile_brand_with_signature_verification(enabled, module_name) do
+    previous_value = Application.get_env(:ex_brand, :signature_verification)
+
+    case enabled do
+      :unset -> Application.delete_env(:ex_brand, :signature_verification)
+      value -> Application.put_env(:ex_brand, :signature_verification, value)
+    end
+
+    try do
+      target_module = Module.concat([module_name])
+
+      {module, _bytecode} =
+        Code.compile_string("""
+        defmodule #{module_name} do
+          use ExBrand, base: :integer
+        end
+        """)
+        |> Enum.find(fn {compiled_module, _bytecode} ->
+          compiled_module == target_module
+        end)
+
+      module
+    after
+      if is_nil(previous_value) do
+        Application.delete_env(:ex_brand, :signature_verification)
+      else
+        Application.put_env(:ex_brand, :signature_verification, previous_value)
+      end
     end
   end
 end
