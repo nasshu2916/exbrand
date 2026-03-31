@@ -1,3 +1,4 @@
+# credo:disable-for-this-file Credo.Check.Design.AliasUsage
 defmodule ExBrand.ProtocolsTest do
   use ExUnit.Case, async: true
 
@@ -47,6 +48,14 @@ defmodule ExBrand.ProtocolsTest do
     assert Phoenix.Param.to_param(email) == "param-user@example.com"
   end
 
+  test "phoenix html safe delegates to the raw value protocol" do
+    user_id = Types.UserID.new!(42)
+    email = NormalizedEmail.new!("  USER@EXAMPLE.COM  ")
+
+    assert Phoenix.HTML.Safe.to_iodata(user_id) == ["safe-int:", "42"]
+    assert Phoenix.HTML.Safe.to_iodata(email) == ["safe-str:", "user@example.com"]
+  end
+
   test "standalone modules also receive protocol implementations" do
     user_id = StandaloneUserID.new!(1)
 
@@ -67,6 +76,10 @@ defmodule ExBrand.ProtocolsTest do
 
     assert_raise ArgumentError, ~r/invalid forged or mutated brand value/, fn ->
       to_string(forged_user_id)
+    end
+
+    assert_raise ArgumentError, ~r/invalid forged or mutated brand value/, fn ->
+      Phoenix.HTML.Safe.to_iodata(forged_user_id)
     end
   end
 

@@ -307,7 +307,8 @@ defmodule ExBrand.Builder do
       build_string_chars_impl(module),
       build_json_encoder_impl(module),
       build_jason_encoder_impl(module),
-      build_phoenix_param_impl(module)
+      build_phoenix_param_impl(module),
+      build_phoenix_html_safe_impl(module)
     ]
   end
 
@@ -377,6 +378,21 @@ defmodule ExBrand.Builder do
             value
             |> unquote(module).unwrap()
             |> Phoenix.Param.to_param()
+          end
+        end
+      end
+    end
+  end
+
+  defp build_phoenix_html_safe_impl(module) do
+    quote do
+      if Code.ensure_loaded?(Phoenix.HTML.Safe) do
+        defimpl Phoenix.HTML.Safe, for: unquote(module) do
+          def to_iodata(value) do
+            value
+            |> unquote(module).unwrap()
+            # credo:disable-for-next-line Credo.Check.Design.AliasUsage
+            |> Phoenix.HTML.Safe.to_iodata()
           end
         end
       end

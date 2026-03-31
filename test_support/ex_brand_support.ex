@@ -36,6 +36,25 @@ unless Code.ensure_loaded?(Phoenix.Param) do
   end
 end
 
+unless Code.ensure_loaded?(Phoenix.HTML.Safe) do
+  defprotocol Phoenix.HTML.Safe do
+    @fallback_to_any true
+    def to_iodata(value)
+  end
+
+  defimpl Phoenix.HTML.Safe, for: Integer do
+    def to_iodata(value), do: ["safe-int:", Integer.to_string(value)]
+  end
+
+  defimpl Phoenix.HTML.Safe, for: BitString do
+    def to_iodata(value), do: ["safe-str:", value]
+  end
+
+  defimpl Phoenix.HTML.Safe, for: Any do
+    def to_iodata(value), do: ["safe-raw:", inspect(value)]
+  end
+end
+
 unless Code.ensure_loaded?(Ecto.Type) do
   defmodule Ecto.Type do
     @callback type() :: term()
