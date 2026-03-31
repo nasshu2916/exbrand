@@ -52,4 +52,10 @@ defmodule ExBrand.ProtocolsTest do
 
     assert inspect(user_id) == "#StandaloneUserID<1>"
   end
+
+  test "inspect uses configured brand name when present" do
+    user_id = Types.NamedUserID.new!(1)
+
+    assert inspect(user_id) == "#User ID<1>"
+  end
 end

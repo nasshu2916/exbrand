@@ -112,6 +112,7 @@ defmodule ExBrand.BuilderTest do
   test "reflection API exposes brand metadata" do
     assert Types.UserID.__meta__() == %{
              module: Types.UserID,
+             name: "UserID",
              base: :integer,
              validator: nil,
              generator: nil,
@@ -131,11 +132,30 @@ defmodule ExBrand.BuilderTest do
   test "reflection API exposes configured generator metadata" do
     assert Types.GeneratedUserID.__meta__() == %{
              module: Types.GeneratedUserID,
+             name: "GeneratedUserID",
              base: :integer,
              validator: nil,
              generator: {:integer_generator, min: 1},
              error: nil
            }
+  end
+
+  test "brand can expose a custom display name" do
+    assert Types.NamedUserID.__name__() == "User ID"
+    assert Types.NamedUserID.__meta__().name == "User ID"
+    assert Types.NamedAccessToken.__name__() == "Access Token"
+  end
+
+  test "name option rejects unsupported shapes" do
+    assert_raise ArgumentError, ~r/name must be a string or atom/, fn ->
+      Code.compile_string("""
+      defmodule InvalidNamedBrand do
+        use ExBrand,
+          base: :integer,
+          name: 123
+      end
+      """)
+    end
   end
 
   test "validator can normalize raw value before branding" do

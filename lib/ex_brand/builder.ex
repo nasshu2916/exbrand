@@ -48,6 +48,7 @@ defmodule ExBrand.Builder do
     validate = Keyword.get(opts, :validate)
     error = Keyword.get(opts, :error)
     generator = Keyword.get(opts, :generator)
+    name = normalize_name(Keyword.get(opts, :name), module)
     derive = normalize_derive(Keyword.get(opts, :derive))
 
     quote do
@@ -69,6 +70,7 @@ defmodule ExBrand.Builder do
       @type raw() :: unquote(raw_type)
       @type meta() :: %{
               module: module(),
+              name: String.t(),
               base: :integer | :binary | :string,
               validator: function() | nil,
               generator: term() | nil,
@@ -78,6 +80,7 @@ defmodule ExBrand.Builder do
 
       @base unquote(base)
       @error_reason unquote(error)
+      @brand_name unquote(name)
 
       defp __validator__, do: unquote(validate)
       defp __generator__, do: unquote(generator)
@@ -177,12 +180,19 @@ defmodule ExBrand.Builder do
       def __base__, do: @base
 
       @doc """
+      この brand の表示名を返す。
+      """
+      @spec __name__() :: String.t()
+      def __name__, do: @brand_name
+
+      @doc """
       この brand の定義メタデータを返す。
       """
       @spec __meta__() :: meta()
       def __meta__ do
         %{
           module: __MODULE__,
+          name: @brand_name,
           base: @base,
           validator: __validator__(),
           generator: __generator__(),
@@ -211,14 +221,12 @@ defmodule ExBrand.Builder do
   end
 
   defp build_inspect_impl(module) do
-    inspect_name = inspect_name(module)
-
     quote do
       defimpl Inspect, for: unquote(module) do
         import Inspect.Algebra
 
         def inspect(%unquote(module){__value__: value}, opts) do
-          concat(["#", unquote(inspect_name), "<", to_doc(value, opts), ">"])
+          concat(["#", unquote(module).__name__(), "<", to_doc(value, opts), ">"])
         end
       end
     end
@@ -291,9 +299,16 @@ defmodule ExBrand.Builder do
     raise ArgumentError, "derive must be a protocol or list of protocols, got: #{inspect(other)}"
   end
 
-  defp inspect_name(module) do
+  defp normalize_name(nil, module) do
     module
     |> Module.split()
     |> List.last()
+  end
+
+  defp normalize_name(name, _module) when is_binary(name), do: name
+  defp normalize_name(name, _module) when is_atom(name), do: Atom.to_string(name)
+
+  defp normalize_name(other, _module) do
+    raise ArgumentError, "name must be a string or atom, got: #{inspect(other)}"
   end
 end

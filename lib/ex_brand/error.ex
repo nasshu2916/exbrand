@@ -23,6 +23,14 @@ defmodule ExBrand.Error do
   end
 
   defp build_message(module, reason, value) do
-    "invalid brand value for #{inspect(module)}: #{inspect(reason)} (got #{inspect(value)})"
+    "invalid brand value for #{brand_label(module)}: #{inspect(reason)} (got #{inspect(value)})"
+  end
+
+  defp brand_label(module) do
+    if function_exported?(module, :__name__, 0) do
+      module.__name__()
+    else
+      inspect(module)
+    end
   end
 end

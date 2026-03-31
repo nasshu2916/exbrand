@@ -62,6 +62,7 @@ defmodule ExBrand.TestSupport.Fixtures.Types do
 
   defbrand UserID, :integer
   defbrand OrderID, :integer
+  defbrand NamedUserID, :integer, name: "User ID"
 
   defbrand Email, :string,
     validate: &String.contains?(&1, "@"),
@@ -71,7 +72,11 @@ defmodule ExBrand.TestSupport.Fixtures.Types do
     brand AccessToken, :binary
 
     brand GeneratedUserID, :integer do
-      generator {:integer_generator, min: 1}
+      generator({:integer_generator, min: 1})
+    end
+
+    brand NamedAccessToken, :binary do
+      name("Access Token")
     end
 
     brand PositiveUserID, :integer do
