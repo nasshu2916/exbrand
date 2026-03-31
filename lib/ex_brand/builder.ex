@@ -53,6 +53,51 @@ defmodule ExBrand.Builder do
     secret = if signature_verification, do: generate_brand_secret(), else: nil
     derive = normalize_derive(Keyword.get(opts, :derive))
 
+    ast_context = %{
+      module: module,
+      raw_type: raw_type,
+      derive: derive,
+      base: base,
+      error: error,
+      name: name,
+      signature_verification: signature_verification,
+      secret: secret,
+      validate: validate,
+      generator: generator
+    }
+
+    quote do
+      (unquote_splicing(build_brand_ast_parts(ast_context)))
+    end
+  end
+
+  defp build_brand_ast_parts(%{
+         module: module,
+         raw_type: raw_type,
+         derive: derive,
+         base: base,
+         error: error,
+         name: name,
+         signature_verification: signature_verification,
+         secret: secret,
+         validate: validate,
+         generator: generator
+       }) do
+    [
+      build_brand_moduledoc_ast(module),
+      build_derive_ast(derive),
+      signature_struct_ast(signature_verification),
+      build_types_ast(raw_type, signature_verification),
+      build_brand_attributes_ast(base, error, name, signature_verification, secret),
+      build_internal_helpers_ast(validate, generator, signature_verification),
+      build_constructor_api_ast(signature_verification),
+      build_brand_runtime_api_ast(),
+      build_reflection_api_ast(),
+      build_ecto_integration(module)
+    ]
+  end
+
+  defp build_brand_moduledoc_ast(module) do
     quote do
       @moduledoc """
       `#{inspect(unquote(module))}` は ExBrand によって生成された brand module である。
@@ -61,13 +106,22 @@ defmodule ExBrand.Builder do
       境界値の受け入れには `cast/1` または `cast!/1` を使い、
       取り出しには `unwrap/1` を使う。
       """
+    end
+  end
 
-      if unquote(derive) do
-        @derive unquote(derive)
-      end
+  defp build_derive_ast(nil) do
+    quote do
+    end
+  end
 
-      unquote(signature_struct_ast(signature_verification))
+  defp build_derive_ast(derive) do
+    quote do
+      @derive unquote(derive)
+    end
+  end
 
+  defp build_types_ast(raw_type, signature_verification) do
+    quote do
       @type raw() :: unquote(raw_type)
       @type meta() :: %{
               module: module(),
@@ -78,7 +132,11 @@ defmodule ExBrand.Builder do
               error: term() | nil
             }
       unquote(signature_type_ast(signature_verification))
+    end
+  end
 
+  defp build_brand_attributes_ast(base, error, name, signature_verification, secret) do
+    quote do
       @base unquote(base)
       @error_reason unquote(error)
       @brand_name unquote(name)
@@ -87,12 +145,20 @@ defmodule ExBrand.Builder do
       if @signature_verification do
         @brand_secret unquote(secret)
       end
+    end
+  end
 
+  defp build_internal_helpers_ast(validate, generator, signature_verification) do
+    quote do
       defp __validator__, do: unquote(validate)
       defp __generator__, do: unquote(generator)
 
       unquote(signature_helpers_ast(signature_verification))
+    end
+  end
 
+  defp build_constructor_api_ast(signature_verification) do
+    quote do
       @doc """
       raw 値から brand 値を生成する。
 
@@ -154,12 +220,15 @@ defmodule ExBrand.Builder do
             raise ExBrand.Error, reason: reason, module: __MODULE__, value: value
         end
       end
+    end
+  end
 
+  defp build_brand_runtime_api_ast do
+    quote do
       @doc """
       brand 値から raw 値を明示的に取り出す。
       """
       @spec unwrap(t()) :: raw()
-
       def unwrap(%__MODULE__{__value__: value} = brand) do
         if __valid_signature__(brand) do
           value
@@ -190,7 +259,11 @@ defmodule ExBrand.Builder do
       @spec is_brand?(term()) :: boolean()
       def is_brand?(%__MODULE__{} = brand), do: __valid_signature__(brand)
       def is_brand?(_), do: false
+    end
+  end
 
+  defp build_reflection_api_ast do
+    quote do
       @doc """
       この brand の base type を返す。
       """
@@ -225,8 +298,6 @@ defmodule ExBrand.Builder do
       """
       @spec __brand__() :: meta()
       def __brand__, do: __meta__()
-
-      unquote(build_ecto_integration(module))
     end
   end
 
