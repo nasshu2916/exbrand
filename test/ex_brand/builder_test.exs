@@ -20,10 +20,28 @@ defmodule ExBrand.BuilderTest do
     refute Types.UserID.is_brand?(order_id)
   end
 
+  test "forged struct is not treated as a brand" do
+    refute Types.UserID.is_brand?(%Types.UserID{__value__: 1, __signature__: 0})
+  end
+
   test "unwrap returns raw value" do
     user_id = Types.UserID.new!(1)
 
     assert Types.UserID.unwrap(user_id) == 1
+  end
+
+  test "unwrap rejects forged or mutated brand value" do
+    user_id = Types.UserID.new!(1)
+    forged_user_id = %Types.UserID{__value__: 1, __signature__: 0}
+    mutated_user_id = %{user_id | __value__: 2}
+
+    assert_raise ArgumentError, ~r/invalid forged or mutated brand value/, fn ->
+      Types.UserID.unwrap(forged_user_id)
+    end
+
+    assert_raise ArgumentError, ~r/invalid forged or mutated brand value/, fn ->
+      Types.UserID.unwrap(mutated_user_id)
+    end
   end
 
   test "generic unwrap extracts raw value from any ExBrand value" do
@@ -72,9 +90,11 @@ defmodule ExBrand.BuilderTest do
   end
 
   test "cast revalidates an existing brand value" do
-    forged_email = %Types.Email{__value__: "invalid"}
+    forged_email = %Types.Email{__value__: "invalid", __signature__: 0}
 
-    assert Types.Email.cast(forged_email) == {:error, :invalid_email}
+    assert_raise ArgumentError, ~r/invalid forged or mutated brand value/, fn ->
+      Types.Email.cast(forged_email)
+    end
   end
 
   test "cast rejects invalid raw value" do

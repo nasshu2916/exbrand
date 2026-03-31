@@ -49,6 +49,7 @@ defmodule ExBrand.Builder do
     error = Keyword.get(opts, :error)
     generator = Keyword.get(opts, :generator)
     name = normalize_name(Keyword.get(opts, :name), module)
+    secret = generate_brand_secret()
     derive = normalize_derive(Keyword.get(opts, :derive))
 
     quote do
@@ -64,8 +65,8 @@ defmodule ExBrand.Builder do
         @derive unquote(derive)
       end
 
-      @enforce_keys [:__value__]
-      defstruct [:__value__]
+      @enforce_keys [:__value__, :__signature__]
+      defstruct [:__value__, :__signature__]
 
       @type raw() :: unquote(raw_type)
       @type meta() :: %{
@@ -76,14 +77,20 @@ defmodule ExBrand.Builder do
               generator: term() | nil,
               error: term() | nil
             }
-      @opaque t() :: %__MODULE__{__value__: raw()}
+      @opaque t() :: %__MODULE__{__value__: raw(), __signature__: integer()}
 
       @base unquote(base)
       @error_reason unquote(error)
       @brand_name unquote(name)
+      @brand_secret unquote(secret)
 
       defp __validator__, do: unquote(validate)
       defp __generator__, do: unquote(generator)
+      defp __sign__(value), do: :erlang.phash2({@brand_secret, value})
+
+      defp __valid_signature__(%__MODULE__{__value__: value, __signature__: signature}) do
+        signature == __sign__(value)
+      end
 
       @doc """
       raw 値から brand 値を生成する。
@@ -93,8 +100,15 @@ defmodule ExBrand.Builder do
       @spec new(raw()) :: {:ok, t()} | {:error, term()}
       def new(value) do
         case ExBrand.Validator.validate(value, @base, __validator__(), @error_reason) do
-          {:ok, normalized_value} -> {:ok, %__MODULE__{__value__: normalized_value}}
-          {:error, reason} -> {:error, reason}
+          {:ok, normalized_value} ->
+            {:ok,
+             %__MODULE__{
+               __value__: normalized_value,
+               __signature__: __sign__(normalized_value)
+             }}
+
+          {:error, reason} ->
+            {:error, reason}
         end
       end
 
@@ -148,7 +162,14 @@ defmodule ExBrand.Builder do
       brand 値から raw 値を明示的に取り出す。
       """
       @spec unwrap(t()) :: raw()
-      def unwrap(%__MODULE__{__value__: value}), do: value
+
+      def unwrap(%__MODULE__{__value__: value} = brand) do
+        if __valid_signature__(brand) do
+          value
+        else
+          raise ArgumentError, "invalid forged or mutated brand value for #{__name__()}"
+        end
+      end
 
       @doc """
       raw 値がその brand として受理可能かを返す。
@@ -170,7 +191,7 @@ defmodule ExBrand.Builder do
       渡された値が当該 brand の struct かを返す。
       """
       @spec is_brand?(term()) :: boolean()
-      def is_brand?(%__MODULE__{}), do: true
+      def is_brand?(%__MODULE__{} = brand), do: __valid_signature__(brand)
       def is_brand?(_), do: false
 
       @doc """
@@ -225,8 +246,14 @@ defmodule ExBrand.Builder do
       defimpl Inspect, for: unquote(module) do
         import Inspect.Algebra
 
-        def inspect(%unquote(module){__value__: value}, opts) do
-          concat(["#", unquote(module).__name__(), "<", to_doc(value, opts), ">"])
+        def inspect(value, opts) do
+          concat([
+            "#",
+            unquote(module).__name__(),
+            "<",
+            to_doc(unquote(module).unwrap(value), opts),
+            ">"
+          ])
         end
       end
     end
@@ -235,8 +262,10 @@ defmodule ExBrand.Builder do
   defp build_string_chars_impl(module) do
     quote do
       defimpl String.Chars, for: unquote(module) do
-        def to_string(%unquote(module){__value__: value}) do
-          Kernel.to_string(value)
+        def to_string(value) do
+          value
+          |> unquote(module).unwrap()
+          |> Kernel.to_string()
         end
       end
     end
@@ -246,8 +275,10 @@ defmodule ExBrand.Builder do
     quote do
       if Code.ensure_loaded?(Jason.Encoder) do
         defimpl Jason.Encoder, for: unquote(module) do
-          def encode(%unquote(module){__value__: value}, opts) do
-            Jason.Encoder.encode(value, opts)
+          def encode(value, opts) do
+            value
+            |> unquote(module).unwrap()
+            |> Jason.Encoder.encode(opts)
           end
         end
       end
@@ -258,8 +289,10 @@ defmodule ExBrand.Builder do
     quote do
       if Code.ensure_loaded?(JSON.Encoder) do
         defimpl JSON.Encoder, for: unquote(module) do
-          def encode(%unquote(module){__value__: value}, encoder) do
-            JSON.Encoder.encode(value, encoder)
+          def encode(value, encoder) do
+            value
+            |> unquote(module).unwrap()
+            |> JSON.Encoder.encode(encoder)
           end
         end
       end
@@ -270,8 +303,10 @@ defmodule ExBrand.Builder do
     quote do
       if Code.ensure_loaded?(Phoenix.Param) do
         defimpl Phoenix.Param, for: unquote(module) do
-          def to_param(%unquote(module){__value__: value}) do
-            Phoenix.Param.to_param(value)
+          def to_param(value) do
+            value
+            |> unquote(module).unwrap()
+            |> Phoenix.Param.to_param()
           end
         end
       end
@@ -310,5 +345,9 @@ defmodule ExBrand.Builder do
 
   defp normalize_name(other, _module) do
     raise ArgumentError, "name must be a string or atom, got: #{inspect(other)}"
+  end
+
+  defp generate_brand_secret do
+    :crypto.strong_rand_bytes(32)
   end
 end

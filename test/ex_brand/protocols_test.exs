@@ -58,4 +58,14 @@ defmodule ExBrand.ProtocolsTest do
 
     assert inspect(user_id) == "#User ID<1>"
   end
+
+  test "protocol implementations reject forged values" do
+    forged_user_id = %Types.UserID{__value__: 1, __signature__: 0}
+
+    assert inspect(forged_user_id) =~ "invalid forged or mutated brand value"
+
+    assert_raise ArgumentError, ~r/invalid forged or mutated brand value/, fn ->
+      to_string(forged_user_id)
+    end
+  end
 end
