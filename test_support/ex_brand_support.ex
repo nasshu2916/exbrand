@@ -36,6 +36,41 @@ unless Code.ensure_loaded?(Phoenix.Param) do
   end
 end
 
+unless Code.ensure_loaded?(Ecto.Type) do
+  defmodule Ecto.Type do
+    @callback type() :: term()
+    @callback cast(term()) :: {:ok, term()} | :error
+    @callback load(term()) :: {:ok, term()} | :error
+    @callback dump(term()) :: {:ok, term()} | :error
+    @callback embed_as(term()) :: term()
+    @callback equal?(term(), term()) :: boolean()
+
+    defmacro __using__(_opts) do
+      quote do
+        @behaviour Ecto.Type
+      end
+    end
+  end
+end
+
+unless Code.ensure_loaded?(Ecto.ParameterizedType) do
+  defmodule Ecto.ParameterizedType do
+    @callback init(keyword()) :: term()
+    @callback type(term()) :: term()
+    @callback cast(term(), term()) :: {:ok, term()} | :error
+    @callback load(term(), (term() -> {:ok, term()} | :error), term()) :: {:ok, term()} | :error
+    @callback dump(term(), (term() -> {:ok, term()} | :error), term()) :: {:ok, term()} | :error
+    @callback embed_as(term(), term()) :: term()
+    @callback equal?(term(), term(), term()) :: boolean()
+
+    defmacro __using__(_opts) do
+      quote do
+        @behaviour Ecto.ParameterizedType
+      end
+    end
+  end
+end
+
 defprotocol ExBrand.TestSupport.Serializable do
   @fallback_to_any true
   def serialize(term)
