@@ -60,6 +60,12 @@ defmodule ExBrand.Builder do
       defstruct [:__value__]
 
       @type raw() :: unquote(raw_type)
+      @type meta() :: %{
+              module: module(),
+              base: :integer | :binary | :string,
+              validator: function() | nil,
+              error: term() | nil
+            }
       @opaque t() :: %__MODULE__{__value__: raw()}
 
       @base unquote(base)
@@ -122,6 +128,27 @@ defmodule ExBrand.Builder do
       """
       @spec __base__() :: :integer | :binary | :string
       def __base__, do: @base
+
+      @doc """
+      この brand の定義メタデータを返す。
+      """
+      @spec __meta__() :: meta()
+      def __meta__ do
+        %{
+          module: __MODULE__,
+          base: @base,
+          validator: __validator__(),
+          error: @error_reason
+        }
+      end
+
+      @doc """
+      この brand の reflection 情報を返す。
+
+      `__meta__/0` の alias として使える。
+      """
+      @spec __brand__() :: meta()
+      def __brand__, do: __meta__()
     end
   end
 

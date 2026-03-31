@@ -52,6 +52,23 @@ defmodule ExBrand.BuilderTest do
     assert StandaloneEmail.new("invalid") == {:error, :invalid_email}
   end
 
+  test "reflection API exposes brand metadata" do
+    assert Types.UserID.__meta__() == %{
+             module: Types.UserID,
+             base: :integer,
+             validator: nil,
+             error: nil
+           }
+
+    email_meta = Types.Email.__meta__()
+
+    assert email_meta.module == Types.Email
+    assert email_meta.base == :string
+    assert email_meta.error == :invalid_email
+    assert is_function(email_meta.validator, 1)
+    assert Types.Email.__brand__() == email_meta
+  end
+
   test "validator can normalize raw value before branding" do
     email = NormalizedEmail.new!("  USER@EXAMPLE.COM  ")
 
