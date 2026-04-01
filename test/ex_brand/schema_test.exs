@@ -108,6 +108,27 @@ defmodule ExBrand.SchemaTest do
              ExBrand.Schema.validate([0], schema)
   end
 
+  test "schema supports scalar bases handled by the shared validator" do
+    assert {:ok, true} = ExBrand.Schema.validate(true, :boolean)
+    assert {:ok, 1.5} = ExBrand.Schema.validate(1.5, :number)
+    assert {:ok, nil} = ExBrand.Schema.validate(nil, :null)
+    assert {:ok, %{raw: "value"}} = ExBrand.Schema.validate(%{raw: "value"}, :any)
+
+    assert {:error, :invalid_type} = ExBrand.Schema.validate("true", :boolean)
+    assert {:error, :invalid_type} = ExBrand.Schema.validate("1.5", :number)
+    assert {:error, :invalid_type} = ExBrand.Schema.validate("nil", :null)
+  end
+
+  test "schema custom validator can normalize values through the shared validator flow" do
+    schema =
+      {:string,
+       validate: fn value ->
+         {:ok, String.trim(value)}
+       end}
+
+    assert {:ok, "naoya"} = ExBrand.Schema.validate("  naoya  ", schema)
+  end
+
   test "unsupported constraints are rejected at compile time for scalar fields" do
     assert_raise ArgumentError,
                  ~r/unsupported constraints for integer at field :age: :min_length/,

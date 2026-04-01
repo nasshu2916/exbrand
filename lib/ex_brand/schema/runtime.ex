@@ -1,8 +1,8 @@
 defmodule ExBrand.Schema.Runtime do
   @moduledoc false
 
-  alias ExBrand.Base
   alias ExBrand.Schema.Definition
+  alias ExBrand.Validator
 
   @spec validate(term(), term()) :: {:ok, term()} | {:error, term()}
   def validate(value, schema), do: validate_schema(value, schema)
@@ -36,7 +36,7 @@ defmodule ExBrand.Schema.Runtime do
     case Definition.resolve_terminal_schema(schema) do
       {:ok, {:brand, module}} -> module.cast(value)
       {:ok, {:schema, module}} -> module.validate(value)
-      {:ok, {:base, base}} -> validate_base_value(value, base)
+      {:ok, {:base, base}} -> Validator.validate_schema_base(value, base)
       :error -> {:error, :invalid_schema}
     end
   end
@@ -175,26 +175,6 @@ defmodule ExBrand.Schema.Runtime do
     end
   end
 
-  defp validate_base_value(value, :any), do: {:ok, value}
-  defp validate_base_value(value, :boolean) when is_boolean(value), do: {:ok, value}
-  defp validate_base_value(_value, :boolean), do: {:error, :invalid_type}
-  defp validate_base_value(value, :number) when is_number(value), do: {:ok, value}
-  defp validate_base_value(_value, :number), do: {:error, :invalid_type}
-  defp validate_base_value(nil, :null), do: {:ok, nil}
-  defp validate_base_value(_value, :null), do: {:error, :invalid_type}
-
-  defp validate_base_value(value, base) do
-    case Base.normalize!(base) do
-      normalized_base ->
-        case ExBrand.Validator.validate(value, normalized_base, nil, nil) do
-          {:ok, normalized_value} -> {:ok, normalized_value}
-          {:error, reason} -> {:error, reason}
-        end
-    end
-  rescue
-    ArgumentError -> {:error, :invalid_schema}
-  end
-
   defp apply_constraints(value, base_schema, opts) do
     constraint_input = constraint_input(base_schema, value)
 
@@ -284,22 +264,13 @@ defmodule ExBrand.Schema.Runtime do
   end
 
   defp run_custom_validator(value, base_schema, opts) do
-    case Keyword.get(opts, :validate) do
-      nil ->
-        {:ok, value}
-
-      validator when is_function(validator, 1) ->
-        validator_input = constraint_input(base_schema, value)
-
-        case validator.(validator_input) do
-          true -> {:ok, value}
-          false -> {:error, Keyword.get(opts, :error, :invalid_value)}
-          :ok -> {:ok, value}
-          {:ok, normalized_value} -> validate_schema(normalized_value, base_schema)
-          {:error, reason} -> {:error, reason}
-          other -> {:error, {:invalid_validator_result, other}}
-        end
-    end
+    Validator.apply_custom(
+      constraint_input(base_schema, value),
+      value,
+      Keyword.get(opts, :validate),
+      Keyword.get(opts, :error, :invalid_value),
+      &validate_schema(&1, base_schema)
+    )
   end
 
   defp constraint_input(schema, value) do
