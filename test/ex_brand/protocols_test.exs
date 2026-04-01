@@ -97,7 +97,7 @@ defmodule ExBrand.ProtocolsTest do
       {module, _bytecode} =
         Code.compile_string("""
         defmodule #{module_name} do
-          use ExBrand, base: :integer
+          use ExBrand, :integer
         end
         """)
         |> Enum.find(fn {compiled_module, _bytecode} ->

@@ -14,18 +14,11 @@ defmodule MyApp.Types do
 
   defbrand UserID, :integer
   defbrand OrderID, :integer
-  defbrand CustomerID, base: :integer
+  defbrand CustomerID, :integer
 
   defbrands do
-    brand Email, :string do
-      validate(&String.contains?(&1, "@"))
-      error(:invalid_email)
-    end
-
-    brand PositiveUserID, :integer do
-      validate(&(&1 > 0))
-      error(:must_be_positive)
-    end
+    brand Email, {:string, validate: &String.contains?(&1, "@"), error: :invalid_email}
+    brand PositiveUserID, {:integer, validate: &(&1 > 0), error: :must_be_positive}
   end
 end
 ```
@@ -69,7 +62,7 @@ false = MyApp.Types.UserID.valid?("1")
 
 ```elixir
 defmodule MyApp.Types.UserID do
-  use ExBrand, base: :integer
+  use ExBrand, :integer
 end
 ```
 
@@ -82,7 +75,7 @@ user_id = MyApp.Types.UserID.new!(1)
 ## Custom Base Type
 
 組み込みの `:integer` / `:binary` / `:string` 以外を使いたい場合は、
-`ExBrand.Base` を実装した module を `base:` に渡します。
+`ExBrand.Base` を実装した module を `use ExBrand, ...` や `defbrand ...` の引数として渡します。
 
 ```elixir
 defmodule MyApp.Types.PrefixedStringBase do
@@ -103,10 +96,9 @@ defmodule MyApp.Types.PrefixedStringBase do
 end
 
 defmodule MyApp.Types.UserID do
-  use ExBrand,
-    base: {MyApp.Types.PrefixedStringBase, prefix: "usr_"}
+  use ExBrand, {MyApp.Types.PrefixedStringBase, prefix: "usr_"}
 end
 ```
 
-`base:` には module 単体も渡せます。設定値が必要な場合だけ
+module 単体も渡せます。設定値が必要な場合だけ
 `{MyApp.Types.PrefixedStringBase, prefix: "usr_"}` のような tuple 形式を使います。

@@ -1,21 +1,16 @@
 defmodule ExBrand.DSLTest do
   use ExUnit.Case, async: true
 
-  alias ExBrand.TestSupport.Fixtures.{AliasedTypes, SelectivelyAliasedTypes, Types}
+  alias ExBrand.TestSupport.Fixtures.{AliasedTypes, SelectivelyAliasedTypes}
 
-  test "block DSL is supported" do
-    assert {:ok, _brand} = Types.PositiveUserID.new(10)
-    assert Types.PositiveUserID.new(0) == {:error, :must_be_positive}
-  end
-
-  test "defbrand supports keyword-style base option" do
+  test "tuple-style brand definition is supported" do
     modules =
       Code.compile_string("""
-      defmodule KeywordStyleTypes do
+      defmodule TupleStyleTypes do
         use ExBrand
 
-        defbrand UserID, base: :integer
-        defbrand NamedOrderID, base: :integer, name: "Order ID"
+        defbrand UserID, :integer
+        defbrand NamedOrderID, {:integer, name: "Order ID"}
 
         def user_id_base, do: __MODULE__.UserID.__base__()
         def named_order_id_name, do: __MODULE__.NamedOrderID.__name__()
@@ -24,22 +19,22 @@ defmodule ExBrand.DSLTest do
 
     {module, _bytecode} =
       Enum.find(modules, fn {compiled_module, _bytecode} ->
-        compiled_module == KeywordStyleTypes
+        compiled_module == TupleStyleTypes
       end)
 
     assert module.user_id_base() == :integer
     assert module.named_order_id_name() == "Order ID"
   end
 
-  test "brand inside defbrands supports keyword-style base option" do
+  test "brand inside defbrands supports tuple-style options" do
     modules =
       Code.compile_string("""
-      defmodule KeywordStyleBlockTypes do
+      defmodule TupleStyleBlockTypes do
         use ExBrand
 
         defbrands do
-          brand UserID, base: :integer
-          brand Email, base: :string, name: "Email Address"
+          brand UserID, :integer
+          brand Email, {:string, name: "Email Address"}
         end
 
         def user_id_base, do: __MODULE__.UserID.__base__()
@@ -49,22 +44,52 @@ defmodule ExBrand.DSLTest do
 
     {module, _bytecode} =
       Enum.find(modules, fn {compiled_module, _bytecode} ->
-        compiled_module == KeywordStyleBlockTypes
+        compiled_module == TupleStyleBlockTypes
       end)
 
     assert module.user_id_base() == :integer
     assert module.email_name() == "Email Address"
   end
 
-  test "keyword-style brand definition requires base option" do
-    assert_raise ArgumentError, ~r/missing required :base option in brand definition/, fn ->
+  test "keyword-style brand definition is rejected" do
+    assert_raise ArgumentError, ~r/unsupported base type/, fn ->
       Code.compile_string("""
-      defmodule MissingBaseKeywordStyle do
+      defmodule LegacyKeywordStyleBrand do
         use ExBrand
 
         defbrand UserID, name: "User ID"
       end
       """)
+    end
+  end
+
+  test "keyword-style standalone brand definition is rejected" do
+    assert_raise ArgumentError,
+                 ~r/standalone brand syntax no longer accepts keyword options/,
+                 fn ->
+                   Code.compile_string("""
+                   defmodule LegacyKeywordStandaloneBrand do
+                     use ExBrand, base: :integer
+                   end
+                   """)
+                 end
+  end
+
+  test "block options DSL is rejected" do
+    assert_raise CompileError, fn ->
+      ExUnit.CaptureIO.capture_io(:stderr, fn ->
+        Code.compile_string("""
+        defmodule LegacyBlockDslBrand do
+          use ExBrand
+
+          defbrands do
+            brand PositiveUserID, :integer do
+              validate(&(&1 > 0))
+            end
+          end
+        end
+        """)
+      end)
     end
   end
 
@@ -79,7 +104,7 @@ defmodule ExBrand.DSLTest do
                    end
 
                    defmodule InvalidCustomBaseBrand do
-                     use ExBrand, base: InvalidCustomBase
+                     use ExBrand, InvalidCustomBase
                    end
                    """)
                  end

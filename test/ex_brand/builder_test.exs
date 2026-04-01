@@ -99,10 +99,7 @@ defmodule ExBrand.BuilderTest do
         true,
         "SignedEmailForCastBrand",
         """
-        use ExBrand,
-          base: :string,
-          validate: &String.contains?(&1, "@"),
-          error: :invalid_email
+        use ExBrand, {:string, validate: &String.contains?(&1, "@"), error: :invalid_email}
         """
       )
 
@@ -251,9 +248,7 @@ defmodule ExBrand.BuilderTest do
     assert_raise ArgumentError, ~r/name must be a string or atom/, fn ->
       Code.compile_string("""
       defmodule InvalidNamedBrand do
-        use ExBrand,
-          base: :integer,
-          name: 123
+        use ExBrand, {:integer, name: 123}
       end
       """)
     end
@@ -277,9 +272,7 @@ defmodule ExBrand.BuilderTest do
                  fn ->
                    Code.compile_string("""
                    defmodule InvalidDerivedBrand do
-                     use ExBrand,
-                       base: :integer,
-                       derive: "Serializable"
+                     use ExBrand, {:integer, derive: "Serializable"}
                    end
                    """)
                  end
@@ -289,7 +282,7 @@ defmodule ExBrand.BuilderTest do
     compile_brand_module_with_signature_verification(
       enabled,
       module_name,
-      "use ExBrand, base: :integer"
+      "use ExBrand, :integer"
     )
   end
 

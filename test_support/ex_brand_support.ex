@@ -137,27 +137,14 @@ defmodule ExBrand.TestSupport.Fixtures.Types do
 
   defbrand UserID, :integer
   defbrand OrderID, :integer
-  defbrand NamedUserID, :integer, name: "User ID"
-
-  defbrand Email, :string,
-    validate: &String.contains?(&1, "@"),
-    error: :invalid_email
+  defbrand NamedUserID, {:integer, name: "User ID"}
+  defbrand Email, {:string, validate: &String.contains?(&1, "@"), error: :invalid_email}
 
   defbrands do
     brand AccessToken, :binary
-
-    brand GeneratedUserID, :integer do
-      generator({:integer_generator, min: 1})
-    end
-
-    brand NamedAccessToken, :binary do
-      name("Access Token")
-    end
-
-    brand PositiveUserID, :integer do
-      validate(&(&1 > 0))
-      error(:must_be_positive)
-    end
+    brand GeneratedUserID, {:integer, generator: {:integer_generator, min: 1}}
+    brand NamedAccessToken, {:binary, name: "Access Token"}
+    brand PositiveUserID, {:integer, validate: &(&1 > 0), error: :must_be_positive}
   end
 end
 
@@ -181,45 +168,37 @@ defmodule ExBrand.TestSupport.Fixtures.SelectivelyAliasedTypes do
 end
 
 defmodule ExBrand.TestSupport.Fixtures.StandaloneUserID do
-  use ExBrand, base: :integer
+  use ExBrand, :integer
 end
 
 defmodule ExBrand.TestSupport.Fixtures.StandaloneEmail do
-  use ExBrand,
-    base: :string,
-    validate: &String.contains?(&1, "@"),
-    error: :invalid_email
+  use ExBrand, {:string, validate: &String.contains?(&1, "@"), error: :invalid_email}
 end
 
 defmodule ExBrand.TestSupport.Fixtures.StandaloneGeneratedEmail do
-  use ExBrand,
-    base: :string,
-    generator: fn -> {:email_generator, normalize: true} end
+  use ExBrand, {:string, generator: fn -> {:email_generator, normalize: true} end}
 end
 
 defmodule ExBrand.TestSupport.Fixtures.NormalizedEmail do
   use ExBrand,
-    base: :string,
-    validate: fn raw ->
-      normalized = raw |> String.trim() |> String.downcase()
+      {:string,
+       validate: fn raw ->
+         normalized = raw |> String.trim() |> String.downcase()
 
-      if String.contains?(normalized, "@") do
-        {:ok, normalized}
-      else
-        {:error, :invalid_email}
-      end
-    end
+         if String.contains?(normalized, "@") do
+           {:ok, normalized}
+         else
+           {:error, :invalid_email}
+         end
+       end}
 end
 
 defmodule ExBrand.TestSupport.Fixtures.DerivedUserID do
-  use ExBrand,
-    base: :integer,
-    derive: [{ExBrand.TestSupport.Serializable, tag: :user_id}]
+  use ExBrand, {:integer, derive: [{ExBrand.TestSupport.Serializable, tag: :user_id}]}
 end
 
 defmodule ExBrand.TestSupport.Fixtures.PrefixedUserID do
-  use ExBrand,
-    base: {ExBrand.TestSupport.CustomBases.PrefixedString, prefix: "usr_", ecto_type: :string}
+  use ExBrand, {ExBrand.TestSupport.CustomBases.PrefixedString, prefix: "usr_", ecto_type: :string}
 end
 
 defmodule ExBrand.TestSupport.Fixtures.AddressSchema do

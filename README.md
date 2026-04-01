@@ -8,7 +8,7 @@
 
 - `defbrand` / `defbrands` による brand module 定義
 - `use ExBrand.Schema` / `field` による schema 定義と map バリデーション
-- `use ExBrand, base: ...` による standalone brand 定義
+- `use ExBrand, ...` による standalone brand 定義
 - `new/1`, `cast/1`, `load/1`, `dump/1`, `unwrap/1`, `valid?/1` などの生成
 - validator による検証と正規化
 - `derive:`, `name:`, `aliases:`, `generator:` のサポート
@@ -25,13 +25,10 @@ defmodule MyApp.Types do
 
   defbrand UserID, :integer
   defbrand OrderID, :integer
-  defbrand CustomerID, base: :integer
+  defbrand CustomerID, :integer
 
   defbrands do
-    brand Email, :string do
-      validate(&String.contains?(&1, "@"))
-      error(:invalid_email)
-    end
+    brand Email, {:string, validate: &String.contains?(&1, "@"), error: :invalid_email}
   end
 end
 ```
@@ -66,8 +63,7 @@ defmodule MyApp.Types.PrefixedStringBase do
 end
 
 defmodule MyApp.Types.UserID do
-  use ExBrand,
-    base: {MyApp.Types.PrefixedStringBase, prefix: "usr_"}
+  use ExBrand, {MyApp.Types.PrefixedStringBase, prefix: "usr_"}
 end
 ```
 

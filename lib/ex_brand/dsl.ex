@@ -6,49 +6,6 @@ defmodule ExBrand.DSL do
   alias ExBrand.Base
 
   @doc """
-  brand 定義の引数を正規化する。
-  """
-  @spec normalize_brand_args(term(), keyword() | [do: Macro.t()]) :: {term(), keyword()}
-  def normalize_brand_args(base, opts) do
-    case opts do
-      [do: block] ->
-        {base, extract_block_opts(block)}
-
-      list when is_list(list) ->
-        {base, list}
-    end
-  end
-
-  @doc """
-  `defbrand Foo, base: :integer` のような別記法を正規化する。
-  """
-  @spec normalize_brand_definition_args(term(), keyword() | [do: Macro.t()]) ::
-          {term(), keyword()}
-  def normalize_brand_definition_args(base_or_opts, opts \\ [])
-
-  def normalize_brand_definition_args(base_or_opts, []) do
-    case Keyword.keyword?(base_or_opts) do
-      true ->
-        {base, normalized_opts} = Keyword.pop(base_or_opts, :base)
-
-        case base do
-          nil ->
-            raise ArgumentError, "missing required :base option in brand definition"
-
-          _ ->
-            {base, normalized_opts}
-        end
-
-      false ->
-        {base_or_opts, []}
-    end
-  end
-
-  def normalize_brand_definition_args(base, opts) do
-    normalize_brand_args(base, opts)
-  end
-
-  @doc """
   `defbrands` block 内の brand 名が重複していないことを検証する。
   """
   @spec ensure_unique_brands!(Macro.t()) :: :ok
@@ -132,21 +89,5 @@ defmodule ExBrand.DSL do
   defp block_nodes(node), do: [node]
 
   defp extract_brand_name({:brand, _, [name, _base]}), do: [expand_name!(name)]
-  defp extract_brand_name({:brand, _, [name, _base, _opts]}), do: [expand_name!(name)]
   defp extract_brand_name(_node), do: []
-
-  defp extract_block_opts({:__block__, _, nodes}) do
-    Enum.map(nodes, &block_node_to_opt/1)
-  end
-
-  defp extract_block_opts(node), do: [block_node_to_opt(node)]
-
-  defp block_node_to_opt({key, _, [value]})
-       when key in [:validate, :error, :derive, :generator, :name] do
-    {key, value}
-  end
-
-  defp block_node_to_opt(other) do
-    raise ArgumentError, "unsupported brand DSL node: #{Macro.to_string(other)}"
-  end
 end

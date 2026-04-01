@@ -5,7 +5,7 @@ defmodule ExBrand do
   主な使い方は 2 つある。
 
   1. 親モジュール配下に `defbrand` / `defbrands` で定義する
-  2. standalone module に `use ExBrand, base: ...` で直接定義する
+  2. standalone module に `use ExBrand, ...` で直接定義する
   """
 
   alias ExBrand.{Builder, DSL}
@@ -37,40 +37,40 @@ defmodule ExBrand do
   @doc """
   ExBrand の DSL もしくは低レベル API を導入する。
 
-  `base:` がある場合は、そのモジュール自身を brand module として構築する。
-  `base:` がない場合は、`defbrand` / `defbrands` / `brand` を import する。
+  引数が空、もしくは `aliases:` のみの場合は DSL を import する。
+  それ以外の引数は、そのモジュール自身を brand module として構築する。
   """
   defmacro __using__(opts \\ []) do
-    if Keyword.has_key?(opts, :base) do
-      normalized_opts = Keyword.update!(opts, :base, &DSL.expand_base!(&1, __CALLER__))
-      Builder.build_brand_inline(__CALLER__.module, normalized_opts)
-    else
-      aliases = DSL.normalize_aliases(Keyword.get(opts, :aliases, false))
-      alias_asts = DSL.build_aliases_for_parent(__CALLER__.module, aliases)
+    cond do
+      opts == [] ->
+        build_dsl_import_ast(__CALLER__.module, false)
 
-      quote do
-        unquote_splicing(alias_asts)
-        import ExBrand, only: [defbrand: 2, defbrand: 3, defbrands: 1, brand: 2, brand: 3]
-      end
+      is_list(opts) and Keyword.keyword?(opts) and Keyword.keys(opts) -- [:aliases] == [] ->
+        build_dsl_import_ast(__CALLER__.module, Keyword.get(opts, :aliases, false))
+
+      is_list(opts) and Keyword.keyword?(opts) ->
+        raise ArgumentError,
+              "standalone brand syntax no longer accepts keyword options; use `use ExBrand, :integer` or `use ExBrand, {:string, validate: ...}` instead"
+
+      true ->
+        base_or_spec = opts
+        {base, brand_opts} = extract_brand_spec(base_or_spec)
+        normalized_base = DSL.expand_base!(base, __CALLER__)
+
+        Builder.build_brand_inline(
+          __CALLER__.module,
+          Keyword.put(brand_opts, :base, normalized_base)
+        )
     end
   end
 
   @doc """
   親モジュール配下に brand module を 1 つ定義する。
   """
-  defmacro defbrand(name, base_or_opts) do
-    {base, opts} = DSL.normalize_brand_definition_args(base_or_opts)
-    normalized_base = DSL.expand_base!(base, __CALLER__)
-    Builder.build_nested_brand(__CALLER__.module, name, normalized_base, opts)
-  end
-
-  @doc """
-  親モジュール配下に option 付きの brand module を 1 つ定義する。
-  """
-  defmacro defbrand(name, base, opts) do
-    {normalized_base, normalized_opts} = DSL.normalize_brand_args(base, opts)
-    expanded_base = DSL.expand_base!(normalized_base, __CALLER__)
-    Builder.build_nested_brand(__CALLER__.module, name, expanded_base, normalized_opts)
+  defmacro defbrand(name, base_or_spec) do
+    {base, opts} = extract_brand_spec(base_or_spec)
+    expanded_base = DSL.expand_base!(base, __CALLER__)
+    Builder.build_nested_brand(__CALLER__.module, name, expanded_base, opts)
   end
 
   @doc """
@@ -89,19 +89,42 @@ defmodule ExBrand do
   @doc """
   `defbrands` block の中で brand module を 1 つ定義する。
   """
-  defmacro brand(name, base_or_opts) do
-    {base, opts} = DSL.normalize_brand_definition_args(base_or_opts)
-    normalized_base = DSL.expand_base!(base, __CALLER__)
-    Builder.build_nested_brand(__CALLER__.module, name, normalized_base, opts)
+  defmacro brand(name, base_or_spec) do
+    {base, opts} = extract_brand_spec(base_or_spec)
+    expanded_base = DSL.expand_base!(base, __CALLER__)
+    Builder.build_nested_brand(__CALLER__.module, name, expanded_base, opts)
   end
 
-  @doc """
-  `defbrands` block の中で option 付きの brand module を 1 つ定義する。
-  """
-  defmacro brand(name, base, opts) do
-    {normalized_base, normalized_opts} = DSL.normalize_brand_args(base, opts)
-    expanded_base = DSL.expand_base!(normalized_base, __CALLER__)
-    Builder.build_nested_brand(__CALLER__.module, name, expanded_base, normalized_opts)
+  @brand_option_keys [:validate, :error, :derive, :generator, :name]
+
+  defp extract_brand_spec({{base, base_opts}, brand_opts})
+       when is_list(base_opts) and is_list(brand_opts) do
+    if Keyword.keyword?(base_opts) and Keyword.keyword?(brand_opts) and
+         Enum.all?(Keyword.keys(brand_opts), &(&1 in @brand_option_keys)) do
+      {{base, base_opts}, brand_opts}
+    else
+      {{{base, base_opts}, brand_opts}, []}
+    end
+  end
+
+  defp extract_brand_spec({base, opts}) when is_list(opts) do
+    if Keyword.keyword?(opts) and Enum.all?(Keyword.keys(opts), &(&1 in @brand_option_keys)) do
+      {base, opts}
+    else
+      {{base, opts}, []}
+    end
+  end
+
+  defp extract_brand_spec(base), do: {base, []}
+
+  defp build_dsl_import_ast(parent_module, aliases) do
+    normalized_aliases = DSL.normalize_aliases(aliases)
+    alias_asts = DSL.build_aliases_for_parent(parent_module, normalized_aliases)
+
+    quote do
+      unquote_splicing(alias_asts)
+      import ExBrand, only: [defbrand: 2, defbrands: 1, brand: 2]
+    end
   end
 
   defp brand_module_for(%module{} = value) when is_atom(module) do
