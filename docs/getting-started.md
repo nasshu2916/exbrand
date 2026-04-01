@@ -43,8 +43,6 @@ false = MyApp.Types.UserID.valid?("1")
 - `new!/1`
 - `cast/1`
 - `cast!/1`
-- `load/1`
-- `dump/1`
 - `unwrap/1`
 - `valid?/1`
 - `gen/0`

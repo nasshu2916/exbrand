@@ -13,21 +13,21 @@
 すでに brand 値を渡した場合でも、内部 raw 値を再検証します。  
 `cast!/1` は失敗時に `ExBrand.Error` を raise します。
 
-## Load / Dump API
+## Ecto Load / Dump
 
-`load/1` と `dump/1` は、DB 境界を意識した API です。
+DB 境界の `load` / `dump` は brand module 直下ではなく、Ecto adapter 側で扱います。
 
 ```elixir
-{:ok, user_id} = MyApp.Types.UserID.load(1)
-{:error, :invalid_type} = MyApp.Types.UserID.load(MyApp.Types.UserID.new!(1))
+{:ok, user_id} = MyApp.Types.UserID.EctoType.load(1)
+:error = MyApp.Types.UserID.EctoType.load(MyApp.Types.UserID.new!(1))
 
-{:ok, 1} = MyApp.Types.UserID.dump(user_id)
-{:ok, 1} = MyApp.Types.UserID.dump(1)
-{:error, :invalid_type} = MyApp.Types.UserID.dump("1")
+{:ok, 1} = MyApp.Types.UserID.EctoType.dump(user_id)
+{:ok, 1} = MyApp.Types.UserID.EctoType.dump(1)
+:error = MyApp.Types.UserID.EctoType.dump("1")
 ```
 
-- `load/1` は DB から読んだ raw 値だけを受け付けます
-- `dump/1` は brand 値または妥当な raw 値を DB 保存用 raw 値へ変換します
+- `EctoType.load/1` は DB から読んだ raw 値だけを受け付けます
+- `EctoType.dump/1` は brand 値または妥当な raw 値を DB 保存用 raw 値へ変換します
 
 ## Validator
 

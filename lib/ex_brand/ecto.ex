@@ -26,9 +26,11 @@ defmodule ExBrand.Ecto do
   """
   @spec load(module(), term()) :: {:ok, term()} | :error
   def load(brand, value) do
-    brand
-    |> safe_call(fn module -> module.load(value) end)
-    |> normalize_brand_result()
+    case safe_call(brand, fn module -> module.new(value) end) do
+      {:ok, branded_value} -> {:ok, branded_value}
+      {:error, _reason} -> :error
+      :error -> :error
+    end
   end
 
   @doc """
@@ -36,9 +38,18 @@ defmodule ExBrand.Ecto do
   """
   @spec dump(module(), term()) :: {:ok, term()} | :error
   def dump(brand, value) do
-    brand
-    |> safe_call(fn module -> module.dump(value) end)
-    |> normalize_brand_result()
+    cond do
+      is_brand_value?(brand, value) ->
+        case safe_call(brand, fn module -> module.unwrap(value) end) do
+          :error -> :error
+          raw_value -> {:ok, raw_value}
+        end
+
+      true ->
+        with {:ok, branded_value} <- load(brand, value) do
+          dump(brand, branded_value)
+        end
+    end
   end
 
   @doc """
@@ -79,6 +90,14 @@ defmodule ExBrand.Ecto do
   rescue
     ArgumentError -> :error
   end
+
+  defp is_brand_value?(brand, value) when is_atom(brand) do
+    Code.ensure_loaded?(brand) and
+      function_exported?(brand, :is_brand?, 1) and
+      brand.is_brand?(value)
+  end
+
+  defp is_brand_value?(_brand, _value), do: false
 
   defp normalize_brand_result({:ok, brand}), do: {:ok, brand}
   defp normalize_brand_result({:error, _reason}), do: :error

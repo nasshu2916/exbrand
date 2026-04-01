@@ -107,7 +107,6 @@ defmodule ExBrand.Builder do
 
       raw 値の生成には `new/1` または `new!/1` を使い、
       Web 境界の受け入れには `cast/1` または `cast!/1` を使い、
-      DB 境界の読み書きには `load/1` / `dump/1` を使い、
       取り出しには `unwrap/1` を使う。
       """
     end
@@ -222,29 +221,6 @@ defmodule ExBrand.Builder do
 
           {:error, reason} ->
             raise ExBrand.Error, reason: reason, module: __MODULE__, value: value
-        end
-      end
-
-      @doc """
-      DB から読み出した raw 値を brand 値へ変換する。
-
-      `load/1` は Ecto の `load` と同様に raw 値だけを受け付ける。
-      """
-      @spec load(raw()) :: {:ok, t()} | {:error, term()}
-      def load(value), do: new(value)
-
-      @doc """
-      brand 値または raw 値を DB 保存用の raw 値へ変換する。
-      """
-      @spec dump(raw() | t()) :: {:ok, raw()} | {:error, term()}
-      def dump(%__MODULE__{} = value) do
-        {:ok, unwrap(value)}
-      end
-
-      def dump(value) do
-        case load(value) do
-          {:ok, brand} -> {:ok, unwrap(brand)}
-          {:error, reason} -> {:error, reason}
         end
       end
     end

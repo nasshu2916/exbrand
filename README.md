@@ -9,7 +9,7 @@
 - `defbrand` / `defbrands` による brand module 定義
 - `use ExBrand.Schema` / `field` による schema 定義と map バリデーション
 - `use ExBrand, ...` による standalone brand 定義
-- `new/1`, `cast/1`, `load/1`, `dump/1`, `unwrap/1`, `valid?/1` などの生成
+- `new/1`, `cast/1`, `unwrap/1`, `valid?/1` などの生成
 - validator による検証と正規化
 - `derive:`, `name:`, `aliases:`, `generator:` のサポート
 - custom base module による独自 raw type / Ecto type の追加
