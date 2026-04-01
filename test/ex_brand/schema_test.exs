@@ -108,6 +108,48 @@ defmodule ExBrand.SchemaTest do
              ExBrand.Schema.validate([0], schema)
   end
 
+  test "unsupported constraints are rejected at compile time for scalar fields" do
+    assert_raise ArgumentError,
+                 ~r/unsupported constraints for integer at field :age: :min_length/,
+                 fn ->
+                   Code.compile_string("""
+                   defmodule InvalidIntegerConstraintSchema do
+                     use ExBrand.Schema
+
+                     field :age, {:integer, min_length: 2}
+                   end
+                   """)
+                 end
+  end
+
+  test "unsupported constraints are rejected at compile time for list fields" do
+    assert_raise ArgumentError,
+                 ~r/unsupported constraints for list at field :tags: :minimum/,
+                 fn ->
+                   Code.compile_string("""
+                   defmodule InvalidListConstraintSchema do
+                     use ExBrand.Schema
+
+                     field :tags, {[ :string ], minimum: 1}
+                   end
+                   """)
+                 end
+  end
+
+  test "invalid constraint values are rejected at compile time" do
+    assert_raise ArgumentError,
+                 ~r/invalid constraint value at field :published_at: :format => :uuid/,
+                 fn ->
+                   Code.compile_string("""
+                   defmodule InvalidFormatConstraintSchema do
+                     use ExBrand.Schema
+
+                     field :published_at, {:string, format: :uuid}
+                   end
+                   """)
+                 end
+  end
+
   test "validate! raises on invalid params" do
     assert_raise ArgumentError, ~r/invalid schema value/, fn ->
       UserSchema.validate!(%{user_id: "1"})

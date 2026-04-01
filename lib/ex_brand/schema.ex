@@ -45,6 +45,22 @@ defmodule ExBrand.Schema do
   ]
   @internal_error_key :__extra_fields__
 
+  @generic_constraint_keys [:default, :enum, :error, :nullable, :optional, :field, :validate]
+  @map_constraint_keys [:tolerant | @generic_constraint_keys]
+  @list_constraint_keys [:min_items, :max_items, :unique_items | @generic_constraint_keys]
+  @string_constraint_keys [:format, :min_length, :max_length | @generic_constraint_keys]
+  @numeric_constraint_keys [:minimum, :maximum | @generic_constraint_keys]
+
+  @constraint_keys %{
+    any: @generic_constraint_keys,
+    boolean: @generic_constraint_keys,
+    integer: @numeric_constraint_keys,
+    number: @numeric_constraint_keys,
+    null: @generic_constraint_keys,
+    string: @string_constraint_keys,
+    binary: @string_constraint_keys
+  }
+
   @doc """
   Schema DSL を導入する。
   """
@@ -159,6 +175,7 @@ defmodule ExBrand.Schema do
     end
 
     merged_schema = merge_field_opts(schema, opts)
+    validate_schema_definition!(merged_schema, "field #{inspect(name)}")
 
     quote do
       {unquote(name), unquote(Macro.escape(merged_schema))}
@@ -167,7 +184,7 @@ defmodule ExBrand.Schema do
 
   defp merge_field_opts(schema, opts) do
     {base_schema, schema_opts} = split_schema_opts(schema)
-    merged_opts = schema_opts ++ normalize_field_opts(opts)
+    merged_opts = Enum.reverse(Enum.reverse(schema_opts), normalize_field_opts(opts))
     {base_schema, merged_opts}
   end
 
@@ -187,6 +204,177 @@ defmodule ExBrand.Schema do
       {key, _value} -> raise ArgumentError, "unsupported field option: #{inspect(key)}"
     end)
   end
+
+  defp validate_schema_definition!(schema, path) do
+    {base_schema, opts} = split_schema_opts(schema)
+    validate_constraint_values!(opts, path)
+
+    cond do
+      is_map(base_schema) ->
+        ensure_allowed_constraints!(opts, @map_constraint_keys, path, :map)
+
+        Enum.each(base_schema, fn {field_name, field_schema} ->
+          validate_schema_definition!(field_schema, "#{path}.#{field_name}")
+        end)
+
+      is_list(base_schema) ->
+        case base_schema do
+          [item_schema] ->
+            ensure_allowed_constraints!(opts, @list_constraint_keys, path, :list)
+            validate_schema_definition!(item_schema, "#{path}[]")
+
+          _ ->
+            raise ArgumentError,
+                  "invalid schema at #{path}: list schema must contain exactly one item schema"
+        end
+
+      true ->
+        validate_terminal_schema_definition!(base_schema, opts, path)
+    end
+  end
+
+  defp validate_terminal_schema_definition!(base_schema, opts, path) do
+    case infer_constraint_profile(base_schema) do
+      {:ok, {:scalar, scalar_type}} ->
+        allowed_keys = Map.fetch!(@constraint_keys, scalar_type)
+        ensure_allowed_constraints!(opts, allowed_keys, path, scalar_type)
+
+      {:ok, {:brand, profile}} ->
+        allowed_keys = allowed_constraint_keys_for_profile(profile)
+        ensure_allowed_constraints!(opts, allowed_keys, path, :brand)
+
+      {:ok, {:nested_schema, _module}} ->
+        ensure_allowed_constraints!(opts, @generic_constraint_keys, path, :schema)
+
+      :error ->
+        raise ArgumentError, "invalid schema at #{path}: #{inspect(base_schema)}"
+    end
+  end
+
+  defp validate_constraint_values!(opts, path) do
+    Enum.each(opts, fn
+      {:default, _value} ->
+        :ok
+
+      {:enum, value} when is_list(value) ->
+        :ok
+
+      {:error, _value} ->
+        :ok
+
+      {:field, value} when is_atom(value) or is_binary(value) ->
+        :ok
+
+      {:format, value} when value in [:email, :datetime] ->
+        :ok
+
+      {:max_items, value} when is_integer(value) and value >= 0 ->
+        :ok
+
+      {:max_length, value} when is_integer(value) and value >= 0 ->
+        :ok
+
+      {:maximum, value} when is_number(value) ->
+        :ok
+
+      {:min_items, value} when is_integer(value) and value >= 0 ->
+        :ok
+
+      {:min_length, value} when is_integer(value) and value >= 0 ->
+        :ok
+
+      {:minimum, value} when is_number(value) ->
+        :ok
+
+      {:nullable, value} when is_boolean(value) ->
+        :ok
+
+      {:optional, value} when is_boolean(value) ->
+        :ok
+
+      {:tolerant, value} when is_boolean(value) ->
+        :ok
+
+      {:unique_items, value} when is_boolean(value) ->
+        :ok
+
+      {:validate, value} when is_function(value, 1) ->
+        :ok
+
+      {key, value} ->
+        raise ArgumentError,
+              "invalid constraint value at #{path}: #{inspect(key)} => #{inspect(value)}"
+    end)
+  end
+
+  defp ensure_allowed_constraints!(opts, allowed_keys, path, schema_kind) do
+    invalid_keys =
+      opts
+      |> Keyword.keys()
+      |> Enum.uniq()
+      |> Enum.reject(&(&1 in allowed_keys))
+
+    case invalid_keys do
+      [] ->
+        :ok
+
+      keys ->
+        joined = Enum.map_join(keys, ", ", &inspect/1)
+
+        raise ArgumentError,
+              "unsupported constraints for #{schema_kind} at #{path}: #{joined}"
+    end
+  end
+
+  defp allowed_constraint_keys_for_profile(profile) do
+    case profile do
+      :any -> @generic_constraint_keys
+      :boolean -> Map.fetch!(@constraint_keys, :boolean)
+      :integer -> Map.fetch!(@constraint_keys, :integer)
+      :number -> Map.fetch!(@constraint_keys, :number)
+      :null -> Map.fetch!(@constraint_keys, :null)
+      :string -> Map.fetch!(@constraint_keys, :string)
+      :binary -> Map.fetch!(@constraint_keys, :binary)
+      :custom_base -> @generic_constraint_keys
+    end
+  end
+
+  defp infer_constraint_profile(schema) do
+    case resolve_terminal_schema(schema) do
+      {:ok, {:base, base}} ->
+        {:ok, {:scalar, scalar_profile_for_base(base)}}
+
+      {:ok, {:brand, module}} ->
+        {:ok, {:brand, scalar_profile_for_brand(module)}}
+
+      {:ok, {:schema, module}} ->
+        {:ok, {:nested_schema, module}}
+
+      :error ->
+        :error
+    end
+  end
+
+  defp scalar_profile_for_brand(module) do
+    case module.__base__() do
+      :integer -> :integer
+      :string -> :string
+      :binary -> :binary
+      :any -> :any
+      :boolean -> :boolean
+      :number -> :number
+      :null -> :null
+      {_module, _opts} -> :custom_base
+      _other -> :custom_base
+    end
+  end
+
+  defp scalar_profile_for_base(base)
+       when base in [:any, :boolean, :integer, :number, :null, :string, :binary],
+       do: base
+
+  defp scalar_profile_for_base({_module, _opts}), do: :custom_base
+  defp scalar_profile_for_base(_base), do: :custom_base
 
   defp validate_schema(value, schema) do
     {base_schema, opts} = split_schema_opts(schema)
@@ -637,7 +825,8 @@ defmodule ExBrand.Schema do
   end
 
   defp resolve_terminal_schema({schema, opts}) when is_list(opts) do
-    {schema_opts, type_opts} = Keyword.split(opts, @schema_option_keys ++ @field_alias_keys)
+    {schema_opts, type_opts} =
+      Keyword.split(opts, [:required, :from | @schema_option_keys])
 
     cond do
       schema_module?(schema) ->
