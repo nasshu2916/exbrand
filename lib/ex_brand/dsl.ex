@@ -3,6 +3,8 @@ defmodule ExBrand.DSL do
   ExBrand の DSL 入力を正規化する内部モジュール。
   """
 
+  alias ExBrand.Base
+
   @doc """
   brand 定義の引数を正規化する。
   """
@@ -109,14 +111,22 @@ defmodule ExBrand.DSL do
   end
 
   @doc """
-  base type を ExBrand が扱える値に制限する。
+  base type 指定を ExBrand が扱える形に正規化する。
   """
-  @spec expand_base!(:integer | :binary | :string) :: :integer | :binary | :string
-  def expand_base!(base) when base in [:integer, :binary, :string], do: base
+  @spec expand_base!(term(), Macro.Env.t()) :: ExBrand.Base.spec()
+  def expand_base!(base, env), do: base |> expand_base_ast(env) |> Base.normalize!()
 
-  def expand_base!(other) do
-    raise ArgumentError, "unsupported base type: #{inspect(other)}"
+  defp expand_base_ast({:__aliases__, _, _} = base, env), do: Macro.expand(base, env)
+
+  defp expand_base_ast({:{}, _, [module_ast, opts]}, env) when is_list(opts) do
+    {expand_base_ast(module_ast, env), opts}
   end
+
+  defp expand_base_ast({module_ast, opts}, env) when is_list(opts) do
+    {expand_base_ast(module_ast, env), opts}
+  end
+
+  defp expand_base_ast(base, _env), do: base
 
   defp block_nodes({:__block__, _, nodes}), do: nodes
   defp block_nodes(node), do: [node]

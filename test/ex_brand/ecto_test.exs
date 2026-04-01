@@ -2,7 +2,7 @@
 defmodule ExBrand.EctoTest do
   use ExUnit.Case, async: true
 
-  alias ExBrand.TestSupport.Fixtures.Types
+  alias ExBrand.TestSupport.Fixtures.{PrefixedUserID, Types}
 
   test "brand exposes ecto type helpers" do
     assert Types.UserID.ecto_type() == Types.UserID.EctoType
@@ -33,6 +33,7 @@ defmodule ExBrand.EctoTest do
   test "ecto type delegates type and equality" do
     assert Types.UserID.EctoType.type() == :integer
     assert Types.Email.EctoType.type() == :string
+    assert PrefixedUserID.EctoType.type() == :string
     assert Types.UserID.EctoType.equal?(1, Types.UserID.new!(1))
     refute Types.UserID.EctoType.equal?(1, 2)
     refute Types.UserID.EctoType.equal?(1, "1")
@@ -61,5 +62,12 @@ defmodule ExBrand.EctoTest do
   test "ecto parameterized type delegates equality" do
     assert Types.UserID.EctoParameterizedType.equal?(1, Types.UserID.new!(1), [])
     refute Types.UserID.EctoParameterizedType.equal?(1, 2, [])
+  end
+
+  test "custom base exposes configured ecto type and cast behavior" do
+    assert PrefixedUserID.EctoParameterizedType.type([]) == :string
+    assert {:ok, user_id} = PrefixedUserID.EctoType.cast("usr_1")
+    assert PrefixedUserID.unwrap(user_id) == "usr_1"
+    assert PrefixedUserID.EctoType.cast("1") == :error
   end
 end

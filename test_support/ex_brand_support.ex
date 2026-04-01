@@ -111,6 +111,27 @@ defimpl ExBrand.TestSupport.Serializable, for: Any do
   end
 end
 
+defmodule ExBrand.TestSupport.CustomBases.PrefixedString do
+  @behaviour ExBrand.Base
+
+  # 利用側が独自 type の raw 型と Ecto 型を差し替えられることを検証するための fixture。
+  def type_ast(_opts), do: quote(do: String.t())
+
+  def ecto_type(opts), do: Keyword.get(opts, :ecto_type, :string)
+
+  def validate(value, opts) when is_binary(value) do
+    prefix = Keyword.fetch!(opts, :prefix)
+
+    if String.starts_with?(value, prefix) do
+      :ok
+    else
+      {:error, :invalid_type}
+    end
+  end
+
+  def validate(_value, _opts), do: {:error, :invalid_type}
+end
+
 defmodule ExBrand.TestSupport.Fixtures.Types do
   use ExBrand
 
@@ -194,4 +215,9 @@ defmodule ExBrand.TestSupport.Fixtures.DerivedUserID do
   use ExBrand,
     base: :integer,
     derive: [{ExBrand.TestSupport.Serializable, tag: :user_id}]
+end
+
+defmodule ExBrand.TestSupport.Fixtures.PrefixedUserID do
+  use ExBrand,
+    base: {ExBrand.TestSupport.CustomBases.PrefixedString, prefix: "usr_", ecto_type: :string}
 end

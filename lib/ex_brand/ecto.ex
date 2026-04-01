@@ -8,8 +8,8 @@ defmodule ExBrand.Ecto do
   @doc """
   brand の base type を Ecto type として返す。
   """
-  @spec type_for(module()) :: :integer | :binary | :string
-  def type_for(brand), do: brand.__base__()
+  @spec type_for(module()) :: term()
+  def type_for(brand), do: ExBrand.Base.ecto_type!(brand.__base__())
 
   @doc """
   Ecto 境界の cast を ExBrand の `cast/1` に委譲する。

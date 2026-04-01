@@ -11,6 +11,7 @@
 - `new/1`, `cast/1`, `load/1`, `dump/1`, `unwrap/1`, `valid?/1` などの生成
 - validator による検証と正規化
 - `derive:`, `name:`, `aliases:`, `generator:` のサポート
+- custom base module による独自 raw type / Ecto type の追加
 - `Inspect`, `String.Chars` の標準実装
 - `JSON.Encoder`, `Jason.Encoder`, `Phoenix.Param`, `Phoenix.HTML.Safe` の条件付き実装
 - `Ecto.Type` / `Ecto.ParameterizedType` の条件付き統合
@@ -41,6 +42,32 @@ true = MyApp.Types.UserID.valid?(1)
 false = MyApp.Types.UserID.valid?("1")
 
 {:error, :invalid_email} = MyApp.Types.Email.new("invalid")
+```
+
+## Custom Base
+
+```elixir
+defmodule MyApp.Types.PrefixedStringBase do
+  @behaviour ExBrand.Base
+
+  def type_ast(_opts), do: quote(do: String.t())
+  def ecto_type(_opts), do: :string
+
+  def validate(value, opts) when is_binary(value) do
+    if String.starts_with?(value, Keyword.fetch!(opts, :prefix)) do
+      :ok
+    else
+      {:error, :invalid_type}
+    end
+  end
+
+  def validate(_value, _opts), do: {:error, :invalid_type}
+end
+
+defmodule MyApp.Types.UserID do
+  use ExBrand,
+    base: {MyApp.Types.PrefixedStringBase, prefix: "usr_"}
+end
 ```
 
 ## ドキュメント

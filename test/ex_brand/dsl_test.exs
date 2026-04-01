@@ -68,6 +68,23 @@ defmodule ExBrand.DSLTest do
     end
   end
 
+  test "custom base module must export required callbacks" do
+    assert_raise ArgumentError,
+                 ~r/custom base module InvalidCustomBase must export type_ast\/1/,
+                 fn ->
+                   Code.compile_string("""
+                   defmodule InvalidCustomBase do
+                     def validate(_value, _opts), do: :ok
+                     def ecto_type(_opts), do: :string
+                   end
+
+                   defmodule InvalidCustomBaseBrand do
+                     use ExBrand, base: InvalidCustomBase
+                   end
+                   """)
+                 end
+  end
+
   test "defbrands rejects duplicate brand names" do
     assert_raise ArgumentError, ~r/duplicate brand definitions in defbrands: UserID/, fn ->
       Code.compile_string("""

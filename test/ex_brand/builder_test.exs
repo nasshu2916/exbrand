@@ -4,6 +4,7 @@ defmodule ExBrand.BuilderTest do
   alias ExBrand.TestSupport.Fixtures.{
     DerivedUserID,
     NormalizedEmail,
+    PrefixedUserID,
     StandaloneEmail,
     StandaloneGeneratedEmail,
     StandaloneUserID,
@@ -187,6 +188,15 @@ defmodule ExBrand.BuilderTest do
     assert StandaloneEmail.new("invalid") == {:error, :invalid_email}
   end
 
+  test "custom base module can validate user-defined raw types" do
+    assert {:ok, user_id} = PrefixedUserID.new("usr_123")
+    assert PrefixedUserID.unwrap(user_id) == "usr_123"
+    assert PrefixedUserID.new("123") == {:error, :invalid_type}
+
+    assert PrefixedUserID.__base__() ==
+             {ExBrand.TestSupport.CustomBases.PrefixedString, prefix: "usr_", ecto_type: :string}
+  end
+
   test "reflection API exposes brand metadata" do
     assert Types.UserID.__meta__() == %{
              module: Types.UserID,
@@ -214,6 +224,19 @@ defmodule ExBrand.BuilderTest do
              base: :integer,
              validator: nil,
              generator: {:integer_generator, min: 1},
+             error: nil
+           }
+  end
+
+  test "custom base metadata is reflected as configured" do
+    assert PrefixedUserID.__meta__() == %{
+             module: PrefixedUserID,
+             name: "PrefixedUserID",
+             base:
+               {ExBrand.TestSupport.CustomBases.PrefixedString,
+                prefix: "usr_", ecto_type: :string},
+             validator: nil,
+             generator: nil,
              error: nil
            }
   end

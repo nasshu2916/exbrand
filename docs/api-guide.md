@@ -138,6 +138,55 @@ end
 
 `aliases:` が未指定、または `false` の場合、alias は生成されません。
 
+## Custom Base Type
+
+`base:` には組み込みの `:integer` / `:binary` / `:string` だけでなく、
+`ExBrand.Base` を実装した custom base module も指定できます。
+
+custom base module には次の callback が必要です。
+
+- `type_ast/1`: 生成される `raw()` 型の typespec AST を返す
+- `validate/2`: raw 値がその base に適合するか検証する
+- `ecto_type/1`: `Ecto.Type` / `Ecto.ParameterizedType` で返す型を指定する
+
+```elixir
+defmodule MyApp.Types.PrefixedStringBase do
+  @behaviour ExBrand.Base
+
+  def type_ast(_opts), do: quote(do: String.t())
+
+  def ecto_type(opts), do: Keyword.get(opts, :ecto_type, :string)
+
+  def validate(value, opts) when is_binary(value) do
+    prefix = Keyword.fetch!(opts, :prefix)
+
+    if String.starts_with?(value, prefix) do
+      :ok
+    else
+      {:error, :invalid_type}
+    end
+  end
+
+  def validate(_value, _opts), do: {:error, :invalid_type}
+end
+```
+
+```elixir
+defmodule MyApp.Types.UserID do
+  use ExBrand,
+    base: {MyApp.Types.PrefixedStringBase, prefix: "usr_", ecto_type: :string}
+end
+```
+
+この例では次のように振る舞います。
+
+- `raw()` は `String.t()` になる
+- `"usr_"` で始まる文字列だけを受け付ける
+- `Ecto.Type.type/0` と `Ecto.ParameterizedType.type/1` は `:string` を返す
+
+base module に設定値が不要なら、`base: MyApp.Types.PrefixedStringBase` のように
+module 単体でも指定できます。
+
 ## Generic Helper API
 
 brand module を意識せずに raw 値へ戻したい場合は、`ExBrand.unwrap/1` と `ExBrand.maybe_unwrap/1` を使えます。

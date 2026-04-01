@@ -42,7 +42,8 @@ defmodule ExBrand do
   """
   defmacro __using__(opts \\ []) do
     if Keyword.has_key?(opts, :base) do
-      Builder.build_brand_inline(__CALLER__.module, opts)
+      normalized_opts = Keyword.update!(opts, :base, &DSL.expand_base!(&1, __CALLER__))
+      Builder.build_brand_inline(__CALLER__.module, normalized_opts)
     else
       aliases = DSL.normalize_aliases(Keyword.get(opts, :aliases, false))
       alias_asts = DSL.build_aliases_for_parent(__CALLER__.module, aliases)
@@ -59,7 +60,8 @@ defmodule ExBrand do
   """
   defmacro defbrand(name, base_or_opts) do
     {base, opts} = DSL.normalize_brand_definition_args(base_or_opts)
-    Builder.build_nested_brand(__CALLER__.module, name, base, opts)
+    normalized_base = DSL.expand_base!(base, __CALLER__)
+    Builder.build_nested_brand(__CALLER__.module, name, normalized_base, opts)
   end
 
   @doc """
@@ -67,7 +69,8 @@ defmodule ExBrand do
   """
   defmacro defbrand(name, base, opts) do
     {normalized_base, normalized_opts} = DSL.normalize_brand_args(base, opts)
-    Builder.build_nested_brand(__CALLER__.module, name, normalized_base, normalized_opts)
+    expanded_base = DSL.expand_base!(normalized_base, __CALLER__)
+    Builder.build_nested_brand(__CALLER__.module, name, expanded_base, normalized_opts)
   end
 
   @doc """
@@ -88,7 +91,8 @@ defmodule ExBrand do
   """
   defmacro brand(name, base_or_opts) do
     {base, opts} = DSL.normalize_brand_definition_args(base_or_opts)
-    Builder.build_nested_brand(__CALLER__.module, name, base, opts)
+    normalized_base = DSL.expand_base!(base, __CALLER__)
+    Builder.build_nested_brand(__CALLER__.module, name, normalized_base, opts)
   end
 
   @doc """
@@ -96,7 +100,8 @@ defmodule ExBrand do
   """
   defmacro brand(name, base, opts) do
     {normalized_base, normalized_opts} = DSL.normalize_brand_args(base, opts)
-    Builder.build_nested_brand(__CALLER__.module, name, normalized_base, normalized_opts)
+    expanded_base = DSL.expand_base!(normalized_base, __CALLER__)
+    Builder.build_nested_brand(__CALLER__.module, name, expanded_base, normalized_opts)
   end
 
   defp brand_module_for(%module{} = value) when is_atom(module) do

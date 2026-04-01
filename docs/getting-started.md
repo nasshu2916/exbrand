@@ -78,3 +78,35 @@ user_id = MyApp.Types.UserID.new!(1)
 1 = MyApp.Types.UserID.unwrap(user_id)
 :integer = MyApp.Types.UserID.__base__()
 ```
+
+## Custom Base Type
+
+組み込みの `:integer` / `:binary` / `:string` 以外を使いたい場合は、
+`ExBrand.Base` を実装した module を `base:` に渡します。
+
+```elixir
+defmodule MyApp.Types.PrefixedStringBase do
+  @behaviour ExBrand.Base
+
+  def type_ast(_opts), do: quote(do: String.t())
+  def ecto_type(_opts), do: :string
+
+  def validate(value, opts) when is_binary(value) do
+    if String.starts_with?(value, Keyword.fetch!(opts, :prefix)) do
+      :ok
+    else
+      {:error, :invalid_type}
+    end
+  end
+
+  def validate(_value, _opts), do: {:error, :invalid_type}
+end
+
+defmodule MyApp.Types.UserID do
+  use ExBrand,
+    base: {MyApp.Types.PrefixedStringBase, prefix: "usr_"}
+end
+```
+
+`base:` には module 単体も渡せます。設定値が必要な場合だけ
+`{MyApp.Types.PrefixedStringBase, prefix: "usr_"}` のような tuple 形式を使います。

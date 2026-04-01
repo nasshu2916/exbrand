@@ -13,10 +13,11 @@ defmodule ExBrand.Builder do
   @doc """
   親モジュール配下に生成する brand module の AST を返す。
   """
-  @spec build_nested_brand(module(), Macro.t() | atom(), atom(), keyword()) :: Macro.t()
+  @spec build_nested_brand(module(), Macro.t() | atom(), ExBrand.Base.spec(), keyword()) ::
+          Macro.t()
   def build_nested_brand(parent, name, base, opts) do
     module = Module.concat(parent, DSL.expand_name!(name))
-    build_brand_module(module, Keyword.put(opts, :base, DSL.expand_base!(base)))
+    build_brand_module(module, Keyword.put(opts, :base, base))
   end
 
   @doc """
@@ -24,10 +25,8 @@ defmodule ExBrand.Builder do
   """
   @spec build_brand_inline(module(), keyword()) :: Macro.t()
   def build_brand_inline(module, opts) do
-    normalized_opts = Keyword.update!(opts, :base, &DSL.expand_base!/1)
-
     quote do
-      unquote(build_brand_body(module, normalized_opts))
+      unquote(build_brand_body(module, opts))
       unquote_splicing(build_protocol_impls(module))
     end
   end
@@ -44,7 +43,7 @@ defmodule ExBrand.Builder do
 
   defp build_brand_body(module, opts) do
     base = Keyword.fetch!(opts, :base)
-    raw_type = raw_type_ast(base)
+    raw_type = ExBrand.Base.type_ast!(base)
     validate = Keyword.get(opts, :validate)
     error = Keyword.get(opts, :error)
     generator = Keyword.get(opts, :generator)
@@ -127,7 +126,7 @@ defmodule ExBrand.Builder do
       @type meta() :: %{
               module: module(),
               name: String.t(),
-              base: :integer | :binary | :string,
+              base: ExBrand.Base.spec(),
               validator: function() | nil,
               generator: term() | nil,
               error: term() | nil
@@ -291,7 +290,7 @@ defmodule ExBrand.Builder do
       @doc """
       この brand の base type を返す。
       """
-      @spec __base__() :: :integer | :binary | :string
+      @spec __base__() :: ExBrand.Base.spec()
       def __base__, do: @base
 
       @doc """
@@ -497,10 +496,6 @@ defmodule ExBrand.Builder do
       end
     end
   end
-
-  defp raw_type_ast(:integer), do: quote(do: integer())
-  defp raw_type_ast(:binary), do: quote(do: binary())
-  defp raw_type_ast(:string), do: quote(do: String.t())
 
   defp signature_struct_ast(true) do
     quote do
