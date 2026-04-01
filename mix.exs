@@ -40,7 +40,11 @@ defmodule ExBrand.MixProject do
   defp docs do
     [
       main: "readme",
-      extras: ["README.md", "docs/spec.md"],
+      extras: [
+        "README.md",
+        "docs/getting-started.md",
+        "docs/api-guide.md"
+      ],
       source_ref: "main"
     ]
   end
