@@ -19,6 +19,7 @@ defmodule ExBrand.EctoTest do
     assert {:ok, user_id} = Types.UserID.EctoType.load(1)
     assert Types.UserID.unwrap(user_id) == 1
     assert Types.UserID.EctoType.load("1") == :error
+    assert Types.UserID.EctoType.load(Types.UserID.new!(1)) == :error
   end
 
   test "ecto type dumps brands and raw values into raw values" do
@@ -54,6 +55,7 @@ defmodule ExBrand.EctoTest do
     assert Types.UserID.EctoParameterizedType.dump(user_id, dumper, []) == {:ok, 1}
     assert Types.UserID.EctoParameterizedType.dump(1, dumper, []) == {:ok, 1}
     assert Types.UserID.EctoParameterizedType.load("1", loader, []) == :error
+    assert Types.UserID.EctoParameterizedType.load(Types.UserID.new!(1), loader, []) == :error
   end
 
   test "ecto parameterized type delegates equality" do

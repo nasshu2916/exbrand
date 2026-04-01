@@ -122,6 +122,28 @@ defmodule ExBrand.BuilderTest do
     end
   end
 
+  test "load accepts valid raw value for DB boundary" do
+    assert {:ok, user_id} = Types.UserID.load(1)
+    assert Types.UserID.unwrap(user_id) == 1
+  end
+
+  test "load rejects an existing brand value" do
+    user_id = Types.UserID.new!(1)
+
+    assert Types.UserID.load(user_id) == {:error, :invalid_type}
+  end
+
+  test "dump returns raw value from brand or raw input" do
+    user_id = Types.UserID.new!(1)
+
+    assert Types.UserID.dump(user_id) == {:ok, 1}
+    assert Types.UserID.dump(1) == {:ok, 1}
+  end
+
+  test "dump rejects invalid input" do
+    assert Types.UserID.dump("1") == {:error, :invalid_type}
+  end
+
   test "signature verification is disabled by default for newly compiled brands" do
     module = compile_brand_with_signature_verification(:unset, "SignatureDefaultDisabledBrand")
     brand = module.new!(1)

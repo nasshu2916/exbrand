@@ -27,7 +27,7 @@ defmodule ExBrand.Ecto do
   @spec load(module(), term()) :: {:ok, term()} | :error
   def load(brand, value) do
     brand
-    |> safe_call(fn module -> module.new(value) end)
+    |> safe_call(fn module -> module.load(value) end)
     |> normalize_brand_result()
   end
 
@@ -36,9 +36,9 @@ defmodule ExBrand.Ecto do
   """
   @spec dump(module(), term()) :: {:ok, term()} | :error
   def dump(brand, value) do
-    with {:ok, branded_value} <- cast(brand, value) do
-      {:ok, brand.unwrap(branded_value)}
-    end
+    brand
+    |> safe_call(fn module -> module.dump(value) end)
+    |> normalize_brand_result()
   end
 
   @doc """
