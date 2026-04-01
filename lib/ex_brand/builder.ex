@@ -3,6 +3,7 @@ defmodule ExBrand.Builder do
   ExBrand の brand module を生成する内部モジュール。
   """
 
+  alias ExBrand.Adapter
   alias ExBrand.DSL
 
   @doc false
@@ -28,6 +29,7 @@ defmodule ExBrand.Builder do
     quote do
       unquote(build_brand_body(module, opts))
       unquote_splicing(build_protocol_impls(module))
+      unquote_splicing(Adapter.build_external_ast(module))
     end
   end
 
@@ -38,6 +40,7 @@ defmodule ExBrand.Builder do
       end
 
       unquote_splicing(build_protocol_impls(module))
+      unquote_splicing(Adapter.build_external_ast(module))
     end
   end
 
@@ -92,8 +95,9 @@ defmodule ExBrand.Builder do
       build_constructor_api_ast(signature_verification),
       build_brand_runtime_api_ast(),
       build_reflection_api_ast(),
-      build_ecto_integration(module)
+      Adapter.build_module_ast(module)
     ]
+    |> List.flatten()
   end
 
   defp build_brand_moduledoc_ast(module) do
@@ -327,11 +331,7 @@ defmodule ExBrand.Builder do
   defp build_protocol_impls(module) do
     [
       build_inspect_impl(module),
-      build_string_chars_impl(module),
-      build_json_encoder_impl(module),
-      build_jason_encoder_impl(module),
-      build_phoenix_param_impl(module),
-      build_phoenix_html_safe_impl(module)
+      build_string_chars_impl(module)
     ]
   end
 
@@ -360,138 +360,6 @@ defmodule ExBrand.Builder do
           value
           |> unquote(module).unwrap()
           |> Kernel.to_string()
-        end
-      end
-    end
-  end
-
-  defp build_jason_encoder_impl(module) do
-    quote do
-      if Code.ensure_loaded?(Jason.Encoder) do
-        defimpl Jason.Encoder, for: unquote(module) do
-          def encode(value, opts) do
-            value
-            |> unquote(module).unwrap()
-            |> Jason.Encoder.encode(opts)
-          end
-        end
-      end
-    end
-  end
-
-  defp build_json_encoder_impl(module) do
-    quote do
-      if Code.ensure_loaded?(JSON.Encoder) do
-        defimpl JSON.Encoder, for: unquote(module) do
-          def encode(value, encoder) do
-            value
-            |> unquote(module).unwrap()
-            |> JSON.Encoder.encode(encoder)
-          end
-        end
-      end
-    end
-  end
-
-  defp build_phoenix_param_impl(module) do
-    quote do
-      if Code.ensure_loaded?(Phoenix.Param) do
-        defimpl Phoenix.Param, for: unquote(module) do
-          def to_param(value) do
-            value
-            |> unquote(module).unwrap()
-            |> Phoenix.Param.to_param()
-          end
-        end
-      end
-    end
-  end
-
-  defp build_phoenix_html_safe_impl(module) do
-    quote do
-      if Code.ensure_loaded?(Phoenix.HTML.Safe) do
-        defimpl Phoenix.HTML.Safe, for: unquote(module) do
-          def to_iodata(value) do
-            value
-            |> unquote(module).unwrap()
-            # credo:disable-for-next-line Credo.Check.Design.AliasUsage
-            |> Phoenix.HTML.Safe.to_iodata()
-          end
-        end
-      end
-    end
-  end
-
-  defp build_ecto_integration(module) do
-    quote do
-      if Code.ensure_loaded?(Ecto.Type) do
-        @doc """
-        この brand 用の `Ecto.Type` module を返す。
-        """
-        @spec ecto_type() :: module()
-        def ecto_type, do: Module.concat(__MODULE__, EctoType)
-
-        defmodule EctoType do
-          use Ecto.Type
-
-          @brand unquote(module)
-
-          @impl true
-          def type, do: ExBrand.Ecto.type_for(@brand)
-
-          @impl true
-          def cast(value), do: ExBrand.Ecto.cast(@brand, value)
-
-          @impl true
-          def load(value), do: ExBrand.Ecto.load(@brand, value)
-
-          @impl true
-          def dump(value), do: ExBrand.Ecto.dump(@brand, value)
-
-          @impl true
-          def embed_as(_format), do: :self
-
-          @impl true
-          def equal?(left, right), do: ExBrand.Ecto.equal?(@brand, left, right)
-        end
-      end
-
-      if Code.ensure_loaded?(Ecto.ParameterizedType) do
-        @doc """
-        この brand 用の `Ecto.ParameterizedType` 定義を返す。
-        """
-        @spec ecto_parameterized_type() :: {module(), keyword()}
-        def ecto_parameterized_type, do: {Module.concat(__MODULE__, EctoParameterizedType), []}
-
-        defmodule EctoParameterizedType do
-          use Ecto.ParameterizedType
-
-          @brand unquote(module)
-
-          @impl true
-          def init(opts), do: opts
-
-          @impl true
-          def type(_params), do: ExBrand.Ecto.type_for(@brand)
-
-          @impl true
-          def cast(value, _params), do: ExBrand.Ecto.cast(@brand, value)
-
-          @impl true
-          def load(value, loader, _params) do
-            ExBrand.Ecto.parameterized_load(@brand, value, loader)
-          end
-
-          @impl true
-          def dump(value, dumper, _params) do
-            ExBrand.Ecto.parameterized_dump(@brand, value, dumper)
-          end
-
-          @impl true
-          def embed_as(_format, _params), do: :self
-
-          @impl true
-          def equal?(left, right, _params), do: ExBrand.Ecto.equal?(@brand, left, right)
         end
       end
     end

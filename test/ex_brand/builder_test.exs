@@ -33,6 +33,21 @@ defmodule ExBrand.BuilderTest do
     assert Types.UserID.unwrap(user_id) == 1
   end
 
+  test "inspect hides internal field names" do
+    user_id = Types.UserID.new!(1)
+
+    assert inspect(user_id) == "#UserID<1>"
+    refute inspect(user_id) =~ "__value__"
+  end
+
+  test "string chars converts brand value to string" do
+    user_id = Types.UserID.new!(42)
+    email = NormalizedEmail.new!("  USER@EXAMPLE.COM  ")
+
+    assert to_string(user_id) == "42"
+    assert to_string(email) == "user@example.com"
+  end
+
   test "unwrap rejects forged or mutated brand value" do
     module = compile_brand_with_signature_verification(true, "SignedUserIDForUnwrapBrand")
     user_id = module.new!(1)
@@ -163,6 +178,22 @@ defmodule ExBrand.BuilderTest do
     end
   end
 
+  test "inspect rejects forged values" do
+    module = compile_brand_with_signature_verification(true, "SignedInspectUserIDBrand")
+    forged_brand = struct(module, __value__: 1, __signature__: 0)
+
+    assert inspect(forged_brand) =~ "invalid forged or mutated brand value"
+  end
+
+  test "string chars rejects forged values" do
+    module = compile_brand_with_signature_verification(true, "SignedStringCharsUserIDBrand")
+    forged_brand = struct(module, __value__: 1, __signature__: 0)
+
+    assert_raise ArgumentError, ~r/invalid forged or mutated brand value/, fn ->
+      to_string(forged_brand)
+    end
+  end
+
   test "invalid type is rejected" do
     assert Types.UserID.new("1") == {:error, :invalid_type}
   end
@@ -178,6 +209,7 @@ defmodule ExBrand.BuilderTest do
 
     assert StandaloneUserID.unwrap(user_id) == 1
     assert StandaloneUserID.__base__() == :integer
+    assert inspect(user_id) == "#StandaloneUserID<1>"
   end
 
   test "low-level API supports validation options" do
@@ -242,6 +274,7 @@ defmodule ExBrand.BuilderTest do
     assert Types.NamedUserID.__name__() == "User ID"
     assert Types.NamedUserID.__meta__().name == "User ID"
     assert Types.NamedAccessToken.__name__() == "Access Token"
+    assert inspect(Types.NamedUserID.new!(1)) == "#User ID<1>"
   end
 
   test "name option rejects unsupported shapes" do

@@ -1,28 +1,28 @@
 # credo:disable-for-this-file Credo.Check.Design.AliasUsage
-defmodule ExBrand.EctoTest do
+defmodule ExBrand.Adapter.EctoTest do
   use ExUnit.Case, async: true
 
   alias ExBrand.TestSupport.Fixtures.{PrefixedUserID, Types}
 
-  test "brand exposes ecto type helpers" do
+  test "ecto adapter exposes type helpers on the brand module" do
     assert Types.UserID.ecto_type() == Types.UserID.EctoType
     assert Types.UserID.ecto_parameterized_type() == {Types.UserID.EctoParameterizedType, []}
   end
 
-  test "ecto type casts raw values into brands" do
+  test "ecto type adapter casts raw values into brands" do
     assert {:ok, user_id} = Types.UserID.EctoType.cast(1)
     assert Types.UserID.unwrap(user_id) == 1
     assert Types.UserID.EctoType.cast("1") == :error
   end
 
-  test "ecto type loads raw values into brands" do
+  test "ecto type adapter loads raw values into brands" do
     assert {:ok, user_id} = Types.UserID.EctoType.load(1)
     assert Types.UserID.unwrap(user_id) == 1
     assert Types.UserID.EctoType.load("1") == :error
     assert Types.UserID.EctoType.load(Types.UserID.new!(1)) == :error
   end
 
-  test "ecto type dumps brands and raw values into raw values" do
+  test "ecto type adapter dumps brands and raw values into raw values" do
     user_id = Types.UserID.new!(1)
 
     assert Types.UserID.EctoType.dump(user_id) == {:ok, 1}
@@ -30,7 +30,7 @@ defmodule ExBrand.EctoTest do
     assert Types.UserID.EctoType.dump("1") == :error
   end
 
-  test "ecto type delegates type and equality" do
+  test "ecto type adapter delegates type and equality" do
     assert Types.UserID.EctoType.type() == :integer
     assert Types.Email.EctoType.type() == :string
     assert PrefixedUserID.EctoType.type() == :string
@@ -39,7 +39,7 @@ defmodule ExBrand.EctoTest do
     refute Types.UserID.EctoType.equal?(1, "1")
   end
 
-  test "ecto parameterized type casts and reports base type" do
+  test "ecto parameterized type adapter casts and reports base type" do
     assert Types.UserID.EctoParameterizedType.init([]) == []
     assert Types.UserID.EctoParameterizedType.type([]) == :integer
     assert {:ok, user_id} = Types.UserID.EctoParameterizedType.cast(1, [])
@@ -47,7 +47,7 @@ defmodule ExBrand.EctoTest do
     assert Types.UserID.EctoParameterizedType.cast("1", []) == :error
   end
 
-  test "ecto parameterized type loads and dumps through callbacks" do
+  test "ecto parameterized type adapter loads and dumps through callbacks" do
     loader = fn value -> {:ok, value} end
     dumper = fn value -> {:ok, value} end
 
@@ -59,12 +59,12 @@ defmodule ExBrand.EctoTest do
     assert Types.UserID.EctoParameterizedType.load(Types.UserID.new!(1), loader, []) == :error
   end
 
-  test "ecto parameterized type delegates equality" do
+  test "ecto parameterized type adapter delegates equality" do
     assert Types.UserID.EctoParameterizedType.equal?(1, Types.UserID.new!(1), [])
     refute Types.UserID.EctoParameterizedType.equal?(1, 2, [])
   end
 
-  test "custom base exposes configured ecto type and cast behavior" do
+  test "ecto adapter respects custom base configuration" do
     assert PrefixedUserID.EctoParameterizedType.type([]) == :string
     assert {:ok, user_id} = PrefixedUserID.EctoType.cast("usr_1")
     assert PrefixedUserID.unwrap(user_id) == "usr_1"
