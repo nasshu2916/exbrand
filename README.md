@@ -7,6 +7,7 @@
 ## 機能概要
 
 - `defbrand` / `defbrands` による brand module 定義
+- `use ExBrand.Schema` / `field` による schema 定義と map バリデーション
 - `use ExBrand, base: ...` による standalone brand 定義
 - `new/1`, `cast/1`, `load/1`, `dump/1`, `unwrap/1`, `valid?/1` などの生成
 - validator による検証と正規化
@@ -69,6 +70,42 @@ defmodule MyApp.Types.UserID do
     base: {MyApp.Types.PrefixedStringBase, prefix: "usr_"}
 end
 ```
+
+## Schema Validation
+
+```elixir
+defmodule MyApp.UserParams do
+  use ExBrand.Schema
+
+  field :user_id, MyApp.Types.UserID
+  field :email, MyApp.Types.Email
+  field :age, {:integer, minimum: 18, error: :too_young}
+  field :nickname, {:string, optional: true}
+  field :status, {:string, default: "active"}
+  field :contact_email, {MyApp.Types.Email, field: "contactEmail"}
+  field :tags, {[{:string, min_length: 2}], min_items: 1, unique_items: true}
+end
+```
+
+```elixir
+{:ok, params} =
+  MyApp.UserParams.validate(%{
+    "user_id" => 1,
+    "contactEmail" => "contact@example.com",
+    email: "user@example.com",
+    age: 20
+  })
+
+MyApp.Types.UserID.unwrap(params.user_id)
+#=> 1
+
+params.status
+#=> "active"
+```
+
+主な制約は `minimum`, `maximum`, `min_length`, `max_length`, `min_items`,
+`max_items`, `unique_items`, `enum`, `format`, `nullable`, `optional`,
+`default`, `field`, `tolerant` をサポートします。
 
 ## ドキュメント
 

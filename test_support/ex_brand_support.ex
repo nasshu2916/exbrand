@@ -221,3 +221,30 @@ defmodule ExBrand.TestSupport.Fixtures.PrefixedUserID do
   use ExBrand,
     base: {ExBrand.TestSupport.CustomBases.PrefixedString, prefix: "usr_", ecto_type: :string}
 end
+
+defmodule ExBrand.TestSupport.Fixtures.AddressSchema do
+  use ExBrand.Schema
+
+  field :city, :string
+  field :zip, {:string, min_length: 5, max_length: 5}
+end
+
+defmodule ExBrand.TestSupport.Fixtures.UserSchema do
+  use ExBrand.Schema
+
+  field :user_id, ExBrand.TestSupport.Fixtures.Types.UserID
+  field :email, ExBrand.TestSupport.Fixtures.Types.Email
+  field :age, {:integer, minimum: 18, error: :too_young}
+  field :nickname, {:string, optional: true}
+  field :status, {:string, default: "active"}
+  field :contact_email, {ExBrand.TestSupport.Fixtures.Types.Email, field: "contactEmail"}
+  field :address, ExBrand.TestSupport.Fixtures.AddressSchema
+  field :tags, {[{:string, min_length: 2}], min_items: 1, unique_items: true, optional: true}
+  field :published_at, {:string, format: :datetime, optional: true}
+end
+
+defmodule ExBrand.TestSupport.Fixtures.TolerantUserSchema do
+  use ExBrand.Schema, tolerant: true
+
+  field :user_id, ExBrand.TestSupport.Fixtures.Types.UserID
+end

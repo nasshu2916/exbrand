@@ -62,6 +62,61 @@ email = MyApp.Types.NormalizedEmail.new!("  USER@EXAMPLE.COM  ")
 "user@example.com" = MyApp.Types.NormalizedEmail.unwrap(email)
 ```
 
+## Schema DSL
+
+複数フィールドをまとめて検証したい場合は `ExBrand.Schema` を使います。
+
+```elixir
+defmodule MyApp.UserParams do
+  use ExBrand.Schema
+
+  field :user_id, MyApp.Types.UserID
+  field :email, MyApp.Types.Email
+  field :age, {:integer, minimum: 18, error: :too_young}
+  field :nickname, {:string, optional: true}
+  field :status, {:string, default: "active"}
+  field :contact_email, {MyApp.Types.Email, field: "contactEmail"}
+  field :tags, {[{:string, min_length: 2}], min_items: 1, unique_items: true}
+end
+```
+
+```elixir
+{:ok, params} =
+  MyApp.UserParams.validate(%{
+    "user_id" => 1,
+    "contactEmail" => "contact@example.com",
+    email: "user@example.com",
+    age: 20
+  })
+```
+
+この例では次のように振る舞います。
+
+- `user_id` と `email` は brand module の `cast/1` で検証される
+- `age` は raw の `:integer` と `minimum: 18` の両方で検証される
+- `nickname` は未指定でも `nil` で返る
+- `status` は未指定なら `"active"` が入る
+- `contact_email` は入力の `"contactEmail"` キーを読む
+- `tags` は配列要素と配列全体の制約を両方検証する
+
+`validate/1` は `{:ok, map}` または `{:error, %{field => reason}}` を返し、
+`validate!/1` は失敗時に `ArgumentError` を raise します。
+
+主な制約:
+
+- `minimum`, `maximum`
+- `min_length`, `max_length`
+- `min_items`, `max_items`, `unique_items`
+- `enum`
+- `format: :email | :datetime`
+- `nullable`
+- `optional`
+- `default`
+- `field`
+- `tolerant`
+
+既存の `validate:` / `error:` も後方互換のため利用できます。
+
 ## `generator:`
 
 property-based testing で使う generator は `generator:` で定義できます。brand module からは `gen/0` で参照します。
