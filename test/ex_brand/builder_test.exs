@@ -243,7 +243,6 @@ defmodule ExBrand.BuilderTest do
     assert email_meta.error == :invalid_email
     assert email_meta.generator == nil
     assert is_function(email_meta.validator, 1)
-    assert Types.Email.__brand__() == email_meta
   end
 
   test "reflection API exposes configured generator metadata" do

@@ -275,18 +275,7 @@ iex> MyApp.Types.UserID.__meta__()
   generator: nil,
   error: nil
 }
-
-iex> MyApp.Types.UserID.__brand__()
-%{
-  module: MyApp.Types.UserID,
-  base: :integer,
-  validator: nil,
-  generator: nil,
-  error: nil
-}
 ```
-
-`__brand__/0` は `__meta__/0` の alias です。
 
 ## Protocol 実装
 

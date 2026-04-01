@@ -264,7 +264,7 @@ defmodule ExBrand.Schema.Definition do
   @spec brand_module?(term()) :: boolean()
   def brand_module?(module) when is_atom(module) do
     Code.ensure_loaded?(module) and
-      function_exported?(module, :__brand__, 0) and
+      function_exported?(module, :__meta__, 0) and
       function_exported?(module, :cast, 1)
   end
 

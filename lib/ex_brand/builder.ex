@@ -317,14 +317,6 @@ defmodule ExBrand.Builder do
           error: @error_reason
         }
       end
-
-      @doc """
-      この brand の reflection 情報を返す。
-
-      `__meta__/0` の alias として使える。
-      """
-      @spec __brand__() :: meta()
-      def __brand__, do: __meta__()
     end
   end
 

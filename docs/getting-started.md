@@ -52,7 +52,6 @@ false = MyApp.Types.UserID.valid?("1")
 - `__base__/0`
 - `__name__/0`
 - `__meta__/0`
-- `__brand__/0`
 - `ecto_type/0`
 - `ecto_parameterized_type/0`
 
