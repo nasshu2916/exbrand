@@ -141,10 +141,10 @@ defmodule ExBrand.TestSupport.Fixtures.Types do
   defbrand Email, {:string, validate: &String.contains?(&1, "@"), error: :invalid_email}
 
   defbrands do
-    brand AccessToken, :binary
-    brand GeneratedUserID, {:integer, generator: {:integer_generator, min: 1}}
-    brand NamedAccessToken, {:binary, name: "Access Token"}
-    brand PositiveUserID, {:integer, validate: &(&1 > 0), error: :must_be_positive}
+    defbrand AccessToken, :binary
+    defbrand GeneratedUserID, {:integer, generator: {:integer_generator, min: 1}}
+    defbrand NamedAccessToken, {:binary, name: "Access Token"}
+    defbrand PositiveUserID, {:integer, validate: &(&1 > 0), error: :must_be_positive}
   end
 end
 
@@ -198,32 +198,33 @@ defmodule ExBrand.TestSupport.Fixtures.DerivedUserID do
 end
 
 defmodule ExBrand.TestSupport.Fixtures.PrefixedUserID do
-  use ExBrand, {ExBrand.TestSupport.CustomBases.PrefixedString, prefix: "usr_", ecto_type: :string}
+  use ExBrand,
+      {ExBrand.TestSupport.CustomBases.PrefixedString, prefix: "usr_", ecto_type: :string}
 end
 
 defmodule ExBrand.TestSupport.Fixtures.AddressSchema do
   use ExBrand.Schema
 
-  field :city, :string
-  field :zip, {:string, min_length: 5, max_length: 5}
+  field(:city, :string)
+  field(:zip, {:string, min_length: 5, max_length: 5})
 end
 
 defmodule ExBrand.TestSupport.Fixtures.UserSchema do
   use ExBrand.Schema
 
-  field :user_id, ExBrand.TestSupport.Fixtures.Types.UserID
-  field :email, ExBrand.TestSupport.Fixtures.Types.Email
-  field :age, {:integer, minimum: 18, error: :too_young}
-  field :nickname, {:string, optional: true}
-  field :status, {:string, default: "active"}
-  field :contact_email, {ExBrand.TestSupport.Fixtures.Types.Email, field: "contactEmail"}
-  field :address, ExBrand.TestSupport.Fixtures.AddressSchema
-  field :tags, {[{:string, min_length: 2}], min_items: 1, unique_items: true, optional: true}
-  field :published_at, {:string, format: :datetime, optional: true}
+  field(:user_id, ExBrand.TestSupport.Fixtures.Types.UserID)
+  field(:email, ExBrand.TestSupport.Fixtures.Types.Email)
+  field(:age, {:integer, minimum: 18, error: :too_young})
+  field(:nickname, {:string, optional: true})
+  field(:status, {:string, default: "active"})
+  field(:contact_email, {ExBrand.TestSupport.Fixtures.Types.Email, field: "contactEmail"})
+  field(:address, ExBrand.TestSupport.Fixtures.AddressSchema)
+  field(:tags, {[{:string, min_length: 2}], min_items: 1, unique_items: true, optional: true})
+  field(:published_at, {:string, format: :datetime, optional: true})
 end
 
 defmodule ExBrand.TestSupport.Fixtures.TolerantUserSchema do
   use ExBrand.Schema, tolerant: true
 
-  field :user_id, ExBrand.TestSupport.Fixtures.Types.UserID
+  field(:user_id, ExBrand.TestSupport.Fixtures.Types.UserID)
 end

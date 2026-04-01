@@ -88,6 +88,6 @@ defmodule ExBrand.DSL do
   defp block_nodes({:__block__, _, nodes}), do: nodes
   defp block_nodes(node), do: [node]
 
-  defp extract_brand_name({:brand, _, [name, _base]}), do: [expand_name!(name)]
+  defp extract_brand_name({:defbrand, _, [name, _base]}), do: [expand_name!(name)]
   defp extract_brand_name(_node), do: []
 end

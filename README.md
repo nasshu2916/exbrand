@@ -28,7 +28,7 @@ defmodule MyApp.Types do
   defbrand CustomerID, :integer
 
   defbrands do
-    brand Email, {:string, validate: &String.contains?(&1, "@"), error: :invalid_email}
+    defbrand Email, {:string, validate: &String.contains?(&1, "@"), error: :invalid_email}
   end
 end
 ```

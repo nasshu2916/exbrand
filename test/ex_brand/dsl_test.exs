@@ -26,15 +26,15 @@ defmodule ExBrand.DSLTest do
     assert module.named_order_id_name() == "Order ID"
   end
 
-  test "brand inside defbrands supports tuple-style options" do
+  test "defbrand inside defbrands supports tuple-style options" do
     modules =
       Code.compile_string("""
       defmodule TupleStyleBlockTypes do
         use ExBrand
 
         defbrands do
-          brand UserID, :integer
-          brand Email, {:string, name: "Email Address"}
+          defbrand UserID, :integer
+          defbrand Email, {:string, name: "Email Address"}
         end
 
         def user_id_base, do: __MODULE__.UserID.__base__()
@@ -83,7 +83,7 @@ defmodule ExBrand.DSLTest do
           use ExBrand
 
           defbrands do
-            brand PositiveUserID, :integer do
+            defbrand PositiveUserID, :integer do
               validate(&(&1 > 0))
             end
           end
@@ -117,8 +117,8 @@ defmodule ExBrand.DSLTest do
         use ExBrand
 
         defbrands do
-          brand UserID, :integer
-          brand UserID, :binary
+          defbrand UserID, :integer
+          defbrand UserID, :binary
         end
       end
       """)

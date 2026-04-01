@@ -76,7 +76,7 @@ defmodule ExBrand do
   @doc """
   複数の brand 定義を 1 つの block にまとめる。
 
-  block 内では `brand` を使う。
+  block 内では `defbrand` を使う。
   """
   defmacro defbrands(do: block) do
     DSL.ensure_unique_brands!(block)
@@ -84,15 +84,6 @@ defmodule ExBrand do
     quote do
       unquote(block)
     end
-  end
-
-  @doc """
-  `defbrands` block の中で brand module を 1 つ定義する。
-  """
-  defmacro brand(name, base_or_spec) do
-    {base, opts} = extract_brand_spec(base_or_spec)
-    expanded_base = DSL.expand_base!(base, __CALLER__)
-    Builder.build_nested_brand(__CALLER__.module, name, expanded_base, opts)
   end
 
   @brand_option_keys [:validate, :error, :derive, :generator, :name]
@@ -123,7 +114,7 @@ defmodule ExBrand do
 
     quote do
       unquote_splicing(alias_asts)
-      import ExBrand, only: [defbrand: 2, defbrands: 1, brand: 2]
+      import ExBrand, only: [defbrand: 2, defbrands: 1]
     end
   end
 
