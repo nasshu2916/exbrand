@@ -72,6 +72,8 @@ defmodule MyApp.Types do
 
   defbrand UserID, :integer,
     generator: StreamData.positive_integer()
+
+  defbrand OrderID, base: :integer, name: "Order ID"
 end
 ```
 

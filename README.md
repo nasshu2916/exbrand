@@ -23,6 +23,7 @@ defmodule MyApp.Types do
 
   defbrand UserID, :integer
   defbrand OrderID, :integer
+  defbrand CustomerID, base: :integer
 
   defbrands do
     brand Email, :string do

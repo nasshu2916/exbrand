@@ -8,6 +8,66 @@ defmodule ExBrand.DSLTest do
     assert Types.PositiveUserID.new(0) == {:error, :must_be_positive}
   end
 
+  test "defbrand supports keyword-style base option" do
+    modules =
+      Code.compile_string("""
+      defmodule KeywordStyleTypes do
+        use ExBrand
+
+        defbrand UserID, base: :integer
+        defbrand NamedOrderID, base: :integer, name: "Order ID"
+
+        def user_id_base, do: __MODULE__.UserID.__base__()
+        def named_order_id_name, do: __MODULE__.NamedOrderID.__name__()
+      end
+      """)
+
+    {module, _bytecode} =
+      Enum.find(modules, fn {compiled_module, _bytecode} ->
+        compiled_module == KeywordStyleTypes
+      end)
+
+    assert module.user_id_base() == :integer
+    assert module.named_order_id_name() == "Order ID"
+  end
+
+  test "brand inside defbrands supports keyword-style base option" do
+    modules =
+      Code.compile_string("""
+      defmodule KeywordStyleBlockTypes do
+        use ExBrand
+
+        defbrands do
+          brand UserID, base: :integer
+          brand Email, base: :string, name: "Email Address"
+        end
+
+        def user_id_base, do: __MODULE__.UserID.__base__()
+        def email_name, do: __MODULE__.Email.__name__()
+      end
+      """)
+
+    {module, _bytecode} =
+      Enum.find(modules, fn {compiled_module, _bytecode} ->
+        compiled_module == KeywordStyleBlockTypes
+      end)
+
+    assert module.user_id_base() == :integer
+    assert module.email_name() == "Email Address"
+  end
+
+  test "keyword-style brand definition requires base option" do
+    assert_raise ArgumentError, ~r/missing required :base option in brand definition/, fn ->
+      Code.compile_string("""
+      defmodule MissingBaseKeywordStyle do
+        use ExBrand
+
+        defbrand UserID, name: "User ID"
+      end
+      """)
+    end
+  end
+
   test "defbrands rejects duplicate brand names" do
     assert_raise ArgumentError, ~r/duplicate brand definitions in defbrands: UserID/, fn ->
       Code.compile_string("""

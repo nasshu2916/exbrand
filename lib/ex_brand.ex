@@ -57,8 +57,9 @@ defmodule ExBrand do
   @doc """
   親モジュール配下に brand module を 1 つ定義する。
   """
-  defmacro defbrand(name, base) do
-    Builder.build_nested_brand(__CALLER__.module, name, base, [])
+  defmacro defbrand(name, base_or_opts) do
+    {base, opts} = DSL.normalize_brand_definition_args(base_or_opts)
+    Builder.build_nested_brand(__CALLER__.module, name, base, opts)
   end
 
   @doc """
@@ -85,8 +86,9 @@ defmodule ExBrand do
   @doc """
   `defbrands` block の中で brand module を 1 つ定義する。
   """
-  defmacro brand(name, base) do
-    Builder.build_nested_brand(__CALLER__.module, name, base, [])
+  defmacro brand(name, base_or_opts) do
+    {base, opts} = DSL.normalize_brand_definition_args(base_or_opts)
+    Builder.build_nested_brand(__CALLER__.module, name, base, opts)
   end
 
   @doc """
