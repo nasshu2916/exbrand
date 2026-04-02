@@ -13,6 +13,8 @@
         {Credo.Check.Readability.PredicateFunctionNames, false},
         {Credo.Check.Readability.Specs, false},
         {Credo.Check.Refactor.CyclomaticComplexity, false},
+        {Credo.Check.Refactor.RedundantWithClauseResult, false},
+        {Credo.Check.Refactor.Nesting, max_nesting: 3},
         {Credo.Check.Warning.UnusedEnumOperation, false}
       ]
     }

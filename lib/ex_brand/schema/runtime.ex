@@ -10,17 +10,15 @@ defmodule ExBrand.Schema.Runtime do
   defp validate_schema(value, schema) do
     {base_schema, opts} = Definition.split_schema_opts(schema)
 
-    cond do
-      Keyword.get(opts, :nullable, false) and is_nil(value) ->
-        {:ok, nil}
-
-      true ->
-        with {:ok, typed_value} <- validate_typed_value(value, base_schema, opts),
-             {:ok, constrained_value} <- apply_constraints(typed_value, base_schema, opts) do
-          {:ok, constrained_value}
-        else
-          {:error, reason} -> {:error, wrap_error(reason, opts)}
-        end
+    if Keyword.get(opts, :nullable, false) and is_nil(value) do
+      {:ok, nil}
+    else
+      with {:ok, typed_value} <- validate_typed_value(value, base_schema, opts),
+           {:ok, constrained_value} <- apply_constraints(typed_value, base_schema, opts) do
+        {:ok, constrained_value}
+      else
+        {:error, reason} -> {:error, wrap_error(reason, opts)}
+      end
     end
   end
 
@@ -167,12 +165,10 @@ defmodule ExBrand.Schema.Runtime do
   end
 
   defp atomizable_key?(key) do
-    try do
-      _ = String.to_existing_atom(key)
-      true
-    rescue
-      ArgumentError -> false
-    end
+    _ = String.to_existing_atom(key)
+    true
+  rescue
+    ArgumentError -> false
   end
 
   defp apply_constraints(value, base_schema, opts) do

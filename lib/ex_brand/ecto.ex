@@ -38,17 +38,15 @@ defmodule ExBrand.Ecto do
   """
   @spec dump(module(), term()) :: {:ok, term()} | :error
   def dump(brand, value) do
-    cond do
-      is_brand_value?(brand, value) ->
-        case safe_call(brand, fn module -> module.unwrap(value) end) do
-          :error -> :error
-          raw_value -> {:ok, raw_value}
-        end
-
-      true ->
-        with {:ok, branded_value} <- load(brand, value) do
-          dump(brand, branded_value)
-        end
+    if is_brand_value?(brand, value) do
+      case safe_call(brand, fn module -> module.unwrap(value) end) do
+        :error -> :error
+        raw_value -> {:ok, raw_value}
+      end
+    else
+      with {:ok, branded_value} <- load(brand, value) do
+        dump(brand, branded_value)
+      end
     end
   end
 
