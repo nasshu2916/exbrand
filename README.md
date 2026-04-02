@@ -6,7 +6,7 @@
 
 ## 機能概要
 
-- `defbrand` / `defbrands` による brand module 定義
+- `defbrand` による brand module 定義
 - `use ExBrand.Schema` / `field` による schema 定義と map バリデーション
 - `use ExBrand, ...` による standalone brand 定義
 - `new/1`, `cast/1`, `unwrap/1`, `valid?/1` などの生成
@@ -26,10 +26,7 @@ defmodule MyApp.Types do
   defbrand UserID, :integer
   defbrand OrderID, :integer
   defbrand CustomerID, :integer
-
-  defbrands do
-    defbrand Email, {:string, validate: &String.contains?(&1, "@"), error: :invalid_email}
-  end
+  defbrand Email, {:string, validate: &String.contains?(&1, "@"), error: :invalid_email}
 end
 ```
 

@@ -4,7 +4,7 @@ defmodule ExBrand do
 
   主な使い方は 2 つある。
 
-  1. 親モジュール配下に `defbrand` / `defbrands` で定義する
+  1. 親モジュール配下に `defbrand` で定義する
   2. standalone module に `use ExBrand, ...` で直接定義する
   """
 
@@ -73,19 +73,6 @@ defmodule ExBrand do
     Builder.build_nested_brand(__CALLER__.module, name, expanded_base, opts)
   end
 
-  @doc """
-  複数の brand 定義を 1 つの block にまとめる。
-
-  block 内では `defbrand` を使う。
-  """
-  defmacro defbrands(do: block) do
-    DSL.ensure_unique_brands!(block)
-
-    quote do
-      unquote(block)
-    end
-  end
-
   @brand_option_keys [:validate, :error, :derive, :generator, :name]
 
   defp extract_brand_spec({{base, base_opts}, brand_opts})
@@ -114,7 +101,7 @@ defmodule ExBrand do
 
     quote do
       unquote_splicing(alias_asts)
-      import ExBrand, only: [defbrand: 2, defbrands: 1]
+      import ExBrand, only: [defbrand: 2]
     end
   end
 

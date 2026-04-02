@@ -6,29 +6,6 @@ defmodule ExBrand.DSL do
   alias ExBrand.Base
 
   @doc """
-  `defbrands` block 内の brand 名が重複していないことを検証する。
-  """
-  @spec ensure_unique_brands!(Macro.t()) :: :ok
-  def ensure_unique_brands!(block) do
-    duplicates =
-      block
-      |> block_nodes()
-      |> Enum.flat_map(&extract_brand_name/1)
-      |> Enum.frequencies()
-      |> Enum.filter(fn {_name, count} -> count > 1 end)
-      |> Enum.map(fn {name, _count} -> name end)
-
-    case duplicates do
-      [] ->
-        :ok
-
-      names ->
-        joined = Enum.map_join(names, ", ", &inspect/1)
-        raise ArgumentError, "duplicate brand definitions in defbrands: #{joined}"
-    end
-  end
-
-  @doc """
   alias 指定を brand 名のリストへ正規化する。
   """
   @spec normalize_aliases(false | nil | [Macro.t() | atom()]) :: [atom()]
@@ -84,10 +61,4 @@ defmodule ExBrand.DSL do
   end
 
   defp expand_base_ast(base, _env), do: base
-
-  defp block_nodes({:__block__, _, nodes}), do: nodes
-  defp block_nodes(node), do: [node]
-
-  defp extract_brand_name({:defbrand, _, [name, _base]}), do: [expand_name!(name)]
-  defp extract_brand_name(_node), do: []
 end

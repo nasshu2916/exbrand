@@ -139,13 +139,10 @@ defmodule ExBrand.TestSupport.Fixtures.Types do
   defbrand OrderID, :integer
   defbrand NamedUserID, {:integer, name: "User ID"}
   defbrand Email, {:string, validate: &String.contains?(&1, "@"), error: :invalid_email}
-
-  defbrands do
-    defbrand AccessToken, :binary
-    defbrand GeneratedUserID, {:integer, generator: {:integer_generator, min: 1}}
-    defbrand NamedAccessToken, {:binary, name: "Access Token"}
-    defbrand PositiveUserID, {:integer, validate: &(&1 > 0), error: :must_be_positive}
-  end
+  defbrand AccessToken, :binary
+  defbrand GeneratedUserID, {:integer, generator: {:integer_generator, min: 1}}
+  defbrand NamedAccessToken, {:binary, name: "Access Token"}
+  defbrand PositiveUserID, {:integer, validate: &(&1 > 0), error: :must_be_positive}
 end
 
 defmodule ExBrand.TestSupport.Fixtures.AliasedTypes do

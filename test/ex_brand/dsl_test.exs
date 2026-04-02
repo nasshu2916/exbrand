@@ -26,16 +26,14 @@ defmodule ExBrand.DSLTest do
     assert module.named_order_id_name() == "Order ID"
   end
 
-  test "defbrand inside defbrands supports tuple-style options" do
+  test "multiple defbrand definitions can be written sequentially" do
     modules =
       Code.compile_string("""
       defmodule TupleStyleBlockTypes do
         use ExBrand
 
-        defbrands do
-          defbrand UserID, :integer
-          defbrand Email, {:string, name: "Email Address"}
-        end
+        defbrand UserID, :integer
+        defbrand Email, {:string, name: "Email Address"}
 
         def user_id_base, do: __MODULE__.UserID.__base__()
         def email_name, do: __MODULE__.Email.__name__()
@@ -75,17 +73,15 @@ defmodule ExBrand.DSLTest do
                  end
   end
 
-  test "block options DSL is rejected" do
+  test "removed defbrands DSL is rejected" do
     assert_raise CompileError, fn ->
       ExUnit.CaptureIO.capture_io(:stderr, fn ->
         Code.compile_string("""
-        defmodule LegacyBlockDslBrand do
+        defmodule RemovedDefbrandsDslBrand do
           use ExBrand
 
           defbrands do
-            defbrand PositiveUserID, :integer do
-              validate(&(&1 > 0))
-            end
+            defbrand PositiveUserID, :integer
           end
         end
         """)
@@ -108,21 +104,6 @@ defmodule ExBrand.DSLTest do
                    end
                    """)
                  end
-  end
-
-  test "defbrands rejects duplicate brand names" do
-    assert_raise ArgumentError, ~r/duplicate brand definitions in defbrands: UserID/, fn ->
-      Code.compile_string("""
-      defmodule DuplicateBrands do
-        use ExBrand
-
-        defbrands do
-          defbrand UserID, :integer
-          defbrand UserID, :binary
-        end
-      end
-      """)
-    end
   end
 
   test "aliases list generates helper aliases in the parent module" do
