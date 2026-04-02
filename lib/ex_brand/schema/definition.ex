@@ -38,10 +38,10 @@ defmodule ExBrand.Schema.Definition do
     binary: @string_constraint_keys
   }
 
-  @spec schema_option_keys() :: [atom()]
+  @spec schema_option_keys() :: [atom(), ...]
   def schema_option_keys, do: @schema_option_keys
 
-  @spec internal_error_key() :: atom()
+  @spec internal_error_key() :: :__extra_fields__
   def internal_error_key, do: :__extra_fields__
 
   @spec expand_schema(term(), Macro.Env.t()) :: term()
@@ -223,8 +223,26 @@ defmodule ExBrand.Schema.Definition do
     end
   end
 
+  @typep scalar_profile ::
+           :any | :binary | :boolean | :custom_base | :integer | :null | :number | :string
+  @typep map_constraint_key ::
+           :default | :enum | :error | :field | :nullable | :optional | :tolerant | :validate
+  @typep list_constraint_key ::
+           :default
+           | :enum
+           | :error
+           | :field
+           | :max_items
+           | :min_items
+           | :nullable
+           | :optional
+           | :unique_items
+           | :validate
+
   @spec infer_constraint_profile(term()) ::
-          {:ok, {:scalar, atom()} | {:brand, atom()} | {:nested_schema, module()}} | :error
+          {:ok,
+           {:scalar, scalar_profile()} | {:brand, scalar_profile()} | {:nested_schema, atom()}}
+          | :error
   def infer_constraint_profile(schema) do
     case resolve_terminal_schema(schema) do
       {:ok, {:base, base}} -> {:ok, {:scalar, scalar_profile_for_base(base)}}
@@ -234,11 +252,11 @@ defmodule ExBrand.Schema.Definition do
     end
   end
 
-  @spec allowed_constraint_keys_for_profile(atom()) :: [atom()]
+  @spec allowed_constraint_keys_for_profile(scalar_profile()) :: [atom(), ...]
   def allowed_constraint_keys_for_profile(:custom_base), do: @generic_constraint_keys
   def allowed_constraint_keys_for_profile(profile), do: Map.fetch!(@constraint_keys, profile)
 
-  @spec scalar_profile_for_brand(module()) :: atom()
+  @spec scalar_profile_for_brand(module()) :: scalar_profile()
   def scalar_profile_for_brand(module) do
     case module.__base__() do
       :integer -> :integer
@@ -253,7 +271,7 @@ defmodule ExBrand.Schema.Definition do
     end
   end
 
-  @spec scalar_profile_for_base(term()) :: atom()
+  @spec scalar_profile_for_base(term()) :: scalar_profile()
   def scalar_profile_for_base(base)
       when base in [:any, :boolean, :integer, :number, :null, :string, :binary],
       do: base
@@ -279,9 +297,9 @@ defmodule ExBrand.Schema.Definition do
 
   def schema_module?(_module), do: false
 
-  @spec map_constraint_keys() :: [atom()]
+  @spec map_constraint_keys() :: [map_constraint_key(), ...]
   def map_constraint_keys, do: @map_constraint_keys
 
-  @spec list_constraint_keys() :: [atom()]
+  @spec list_constraint_keys() :: [list_constraint_key(), ...]
   def list_constraint_keys, do: @list_constraint_keys
 end
