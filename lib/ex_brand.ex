@@ -93,6 +93,15 @@ defmodule ExBrand do
     end
   end
 
+  defp extract_brand_spec(base_or_opts) when is_list(base_or_opts) do
+    if Keyword.keyword?(base_or_opts) do
+      raise ArgumentError,
+            "keyword-style defbrand syntax is no longer supported; use `defbrand UserID, :integer` or `defbrand UserID, {:integer, name: ...}` instead"
+    else
+      {base_or_opts, []}
+    end
+  end
+
   defp extract_brand_spec(base), do: {base, []}
 
   defp build_dsl_import_ast(parent_module, aliases) do

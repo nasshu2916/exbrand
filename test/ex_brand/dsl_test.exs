@@ -50,15 +50,17 @@ defmodule ExBrand.DSLTest do
   end
 
   test "keyword-style brand definition is rejected" do
-    assert_raise ArgumentError, ~r/unsupported base type/, fn ->
-      Code.compile_string("""
-      defmodule LegacyKeywordStyleBrand do
-        use ExBrand
+    assert_raise ArgumentError,
+                 ~r/keyword-style defbrand syntax is no longer supported/,
+                 fn ->
+                   Code.compile_string("""
+                   defmodule LegacyKeywordStyleBrand do
+                     use ExBrand
 
-        defbrand UserID, name: "User ID"
-      end
-      """)
-    end
+                     defbrand UserID, name: "User ID"
+                   end
+                   """)
+                 end
   end
 
   test "keyword-style standalone brand definition is rejected" do
