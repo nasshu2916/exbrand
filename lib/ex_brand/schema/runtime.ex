@@ -271,7 +271,7 @@ defmodule ExBrand.Schema.Runtime do
 
   defp constraint_input(schema, value) do
     case Definition.resolve_terminal_schema(schema) do
-      {:ok, {:brand, _module}} -> ExBrand.unwrap(value)
+      {:ok, {:brand, _module}} -> ExBrand.unwrap!(value)
       _ -> value
     end
   end

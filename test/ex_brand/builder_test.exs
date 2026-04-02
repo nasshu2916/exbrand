@@ -67,22 +67,22 @@ defmodule ExBrand.BuilderTest do
     user_id = Types.UserID.new!(1)
     email = NormalizedEmail.new!("  USER@EXAMPLE.COM  ")
 
-    assert ExBrand.unwrap(user_id) == 1
-    assert ExBrand.unwrap(email) == "user@example.com"
+    assert ExBrand.unwrap!(user_id) == 1
+    assert ExBrand.unwrap!(email) == "user@example.com"
   end
 
   test "generic unwrap rejects non-brand values" do
     assert_raise ArgumentError, ~r/expected an ExBrand value/, fn ->
-      ExBrand.unwrap(1)
+      ExBrand.unwrap!(1)
     end
   end
 
   test "maybe_unwrap returns raw value for brands and passthrough otherwise" do
     user_id = Types.UserID.new!(1)
 
-    assert ExBrand.maybe_unwrap(user_id) == 1
-    assert ExBrand.maybe_unwrap("plain") == "plain"
-    assert ExBrand.maybe_unwrap(nil) == nil
+    assert ExBrand.unwrap(user_id) == 1
+    assert ExBrand.unwrap("plain") == "plain"
+    assert ExBrand.unwrap(nil) == nil
   end
 
   test "gen returns configured generator expression" do

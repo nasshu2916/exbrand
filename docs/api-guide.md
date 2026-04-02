@@ -239,18 +239,18 @@ module 単体でも指定できます。
 
 ## Generic Helper API
 
-brand module を意識せずに raw 値へ戻したい場合は、`ExBrand.unwrap/1` と `ExBrand.maybe_unwrap/1` を使えます。
+brand module を意識せずに raw 値へ戻したい場合は、`ExBrand.unwrap!/1` と `ExBrand.unwrap/1` を使えます。
 
 ```elixir
 user_id = MyApp.Types.UserID.new!(1)
 
+1 = ExBrand.unwrap!(user_id)
 1 = ExBrand.unwrap(user_id)
-1 = ExBrand.maybe_unwrap(user_id)
-"plain" = ExBrand.maybe_unwrap("plain")
+"plain" = ExBrand.unwrap("plain")
 ```
 
-`ExBrand.unwrap/1` は ExBrand の brand 値のみを受け付け、そうでない値には `ArgumentError` を raise します。  
-`ExBrand.maybe_unwrap/1` は brand なら raw 値を返し、brand でなければ元の値をそのまま返します。
+`ExBrand.unwrap!/1` は ExBrand の brand 値のみを受け付け、そうでない値には `ArgumentError` を raise します。  
+`ExBrand.unwrap/1` は brand なら raw 値を返し、brand でなければ元の値をそのまま返します。
 
 また、brand 値は内部署名付きで生成されるため、`%Brand{...}` による偽造や `%{brand | ...}` による不正更新は `unwrap/1` や各 protocol 実装で拒否されます。
 

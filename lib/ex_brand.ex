@@ -15,8 +15,8 @@ defmodule ExBrand do
 
   ExBrand の brand でない値を渡した場合は `ArgumentError` を raise する。
   """
-  @spec unwrap(term()) :: term()
-  def unwrap(value) do
+  @spec unwrap!(term()) :: term()
+  def unwrap!(value) do
     case brand_module_for(value) do
       {:ok, module} -> module.unwrap(value)
       :error -> raise ArgumentError, "expected an ExBrand value, got: #{inspect(value)}"
@@ -26,8 +26,8 @@ defmodule ExBrand do
   @doc """
   値が ExBrand の brand なら raw 値を返し、そうでなければそのまま返す。
   """
-  @spec maybe_unwrap(term()) :: term()
-  def maybe_unwrap(value) do
+  @spec unwrap(term()) :: term()
+  def unwrap(value) do
     case brand_module_for(value) do
       {:ok, module} -> module.unwrap(value)
       :error -> value
