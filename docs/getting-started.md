@@ -43,7 +43,7 @@ false = MyApp.Types.UserID.valid?("1")
 - `unwrap/1`
 - `valid?/1`
 - `gen/0`
-- `is_brand?/1`
+- `brand?/1`
 - `__base__/0`
 - `__name__/0`
 - `__meta__/0`

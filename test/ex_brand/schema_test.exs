@@ -15,7 +15,7 @@ defmodule ExBrand.SchemaTest do
                published_at: "2026-04-02T12:34:56Z"
              })
 
-    assert Types.UserID.is_brand?(result.user_id)
+    assert Types.UserID.brand?(result.user_id)
     assert Types.UserID.unwrap(result.user_id) == 1
     assert Types.Email.unwrap(result.email) == "user@example.com"
     assert Types.Email.unwrap(result.contact_email) == "contact@example.com"

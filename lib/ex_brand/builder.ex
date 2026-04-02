@@ -259,9 +259,9 @@ defmodule ExBrand.Builder do
       @doc """
       渡された値が当該 brand の struct かを返す。
       """
-      @spec is_brand?(term()) :: boolean()
-      def is_brand?(%__MODULE__{} = brand), do: __valid_signature__(brand)
-      def is_brand?(_), do: false
+      @spec brand?(term()) :: boolean()
+      def brand?(%__MODULE__{} = brand), do: __valid_signature__(brand)
+      def brand?(_), do: false
     end
   end
 

@@ -17,14 +17,14 @@ defmodule ExBrand.BuilderTest do
     {:ok, user_id} = Types.UserID.new(1)
     {:ok, order_id} = Types.OrderID.new(1)
 
-    assert Types.UserID.is_brand?(user_id)
-    refute Types.UserID.is_brand?(order_id)
+    assert Types.UserID.brand?(user_id)
+    refute Types.UserID.brand?(order_id)
   end
 
   test "forged struct is not treated as a brand" do
     module = compile_brand_with_signature_verification(true, "SignedUserIDBrand")
 
-    refute module.is_brand?(struct(module, __value__: 1, __signature__: 0))
+    refute module.brand?(struct(module, __value__: 1, __signature__: 0))
   end
 
   test "unwrap returns raw value" do
@@ -139,7 +139,7 @@ defmodule ExBrand.BuilderTest do
     module = compile_brand_with_signature_verification(:unset, "SignatureDefaultDisabledBrand")
     brand = module.new!(1)
 
-    assert module.is_brand?(brand)
+    assert module.brand?(brand)
     assert module.unwrap(brand) == 1
     assert Map.has_key?(brand, :__value__)
     refute Map.has_key?(brand, :__signature__)
@@ -149,7 +149,7 @@ defmodule ExBrand.BuilderTest do
     module = compile_brand_with_signature_verification(true, "SignatureEnabledBrand")
     forged_brand = struct(module, __value__: 1, __signature__: 0)
 
-    refute module.is_brand?(forged_brand)
+    refute module.brand?(forged_brand)
 
     assert_raise ArgumentError, ~r/invalid forged or mutated brand value/, fn ->
       module.unwrap(forged_brand)

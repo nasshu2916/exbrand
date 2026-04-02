@@ -117,7 +117,7 @@ defmodule ExBrand do
   defp brand_module_for(%module{} = value) when is_atom(module) do
     if function_exported?(module, :__meta__, 0) and
          function_exported?(module, :unwrap, 1) and
-         module.is_brand?(value) do
+         module.brand?(value) do
       {:ok, module}
     else
       :error
