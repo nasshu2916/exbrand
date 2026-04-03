@@ -50,26 +50,10 @@ false = MyApp.Types.UserID.valid?("1")
 - `ecto_type/0`
 - `ecto_parameterized_type/0`
 
-## Standalone Brand
-
-親モジュール配下ではなく、モジュール自身を brand として定義することもできます。
-
-```elixir
-defmodule MyApp.Types.UserID do
-  use ExBrand, :integer
-end
-```
-
-```elixir
-user_id = MyApp.Types.UserID.new!(1)
-1 = MyApp.Types.UserID.unwrap(user_id)
-:integer = MyApp.Types.UserID.__base__()
-```
-
 ## Custom Base Type
 
 組み込みの `:integer` / `:binary` / `:string` 以外を使いたい場合は、
-`ExBrand.Base` を実装した module を `use ExBrand, ...` や `defbrand ...` の引数として渡します。
+`ExBrand.Base` を実装した module を `defbrand ...` の引数として渡します。
 
 ```elixir
 defmodule MyApp.Types.PrefixedStringBase do
@@ -89,8 +73,10 @@ defmodule MyApp.Types.PrefixedStringBase do
   def validate(_value, _opts), do: {:error, :invalid_type}
 end
 
-defmodule MyApp.Types.UserID do
-  use ExBrand, {MyApp.Types.PrefixedStringBase, prefix: "usr_"}
+defmodule MyApp.Types do
+  use ExBrand
+
+  defbrand UserID, {MyApp.Types.PrefixedStringBase, prefix: "usr_"}
 end
 ```
 

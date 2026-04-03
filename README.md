@@ -8,7 +8,6 @@
 
 - `defbrand` による brand module 定義
 - `use ExBrand.Schema` / `field` による schema 定義と map バリデーション
-- `use ExBrand, ...` による standalone brand 定義
 - `new/1`, `cast/1`, `unwrap/1`, `valid?/1` などの生成
 - validator による検証と正規化
 - `derive:`, `name:`, `aliases:`, `generator:` のサポート
@@ -59,8 +58,10 @@ defmodule MyApp.Types.PrefixedStringBase do
   def validate(_value, _opts), do: {:error, :invalid_type}
 end
 
-defmodule MyApp.Types.UserID do
-  use ExBrand, {MyApp.Types.PrefixedStringBase, prefix: "usr_"}
+defmodule MyApp.Types do
+  use ExBrand
+
+  defbrand UserID, {MyApp.Types.PrefixedStringBase, prefix: "usr_"}
 end
 ```
 

@@ -21,18 +21,6 @@ defmodule ExBrand.Builder do
     build_brand_module(module, Keyword.put(opts, :base, base))
   end
 
-  @doc """
-  呼び出し元モジュール自身を brand module として構築する AST を返す。
-  """
-  @spec build_brand_inline(module(), keyword()) :: Macro.t()
-  def build_brand_inline(module, opts) do
-    quote do
-      unquote(build_brand_body(module, opts))
-      unquote_splicing(build_protocol_impls(module))
-      unquote_splicing(Adapter.build_external_ast(module))
-    end
-  end
-
   defp build_brand_module(module, opts) do
     quote do
       defmodule unquote(module) do

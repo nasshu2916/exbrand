@@ -1,11 +1,6 @@
 defmodule ExBrand do
   @moduledoc """
   プリミティブ値に意味的な型境界を与えるための DSL を提供する。
-
-  主な使い方は 2 つある。
-
-  1. 親モジュール配下に `defbrand` で定義する
-  2. standalone module に `use ExBrand, ...` で直接定義する
   """
 
   alias ExBrand.{Builder, DSL}
@@ -35,10 +30,9 @@ defmodule ExBrand do
   end
 
   @doc """
-  ExBrand の DSL もしくは低レベル API を導入する。
+  ExBrand の DSL を導入する。
 
   引数が空、もしくは `aliases:` のみの場合は DSL を import する。
-  それ以外の引数は、そのモジュール自身を brand module として構築する。
   """
   defmacro __using__(opts \\ []) do
     cond do
@@ -50,17 +44,11 @@ defmodule ExBrand do
 
       is_list(opts) and Keyword.keyword?(opts) ->
         raise ArgumentError,
-              "standalone brand syntax no longer accepts keyword options; use `use ExBrand, :integer` or `use ExBrand, {:string, validate: ...}` instead"
+              "`use ExBrand` only accepts the `:aliases` option; define brands with `defbrand` inside the module instead"
 
       true ->
-        base_or_spec = opts
-        {base, brand_opts} = extract_brand_spec(base_or_spec)
-        normalized_base = DSL.expand_base!(base, __CALLER__)
-
-        Builder.build_brand_inline(
-          __CALLER__.module,
-          Keyword.put(brand_opts, :base, normalized_base)
-        )
+        raise ArgumentError,
+              "`use ExBrand` no longer defines standalone brands; use `defbrand` inside a parent module instead"
     end
   end
 

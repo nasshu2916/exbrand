@@ -2,7 +2,8 @@
 defmodule ExBrand.Adapter.JSONTest do
   use ExUnit.Case, async: true
 
-  alias ExBrand.TestSupport.Fixtures.{NormalizedEmail, Types}
+  alias ExBrand.TestSupport.Fixtures.Brands.NormalizedEmail
+  alias ExBrand.TestSupport.Fixtures.Types
 
   test "jason encoder adapter delegates to the raw value encoder" do
     user_id = Types.UserID.new!(42)

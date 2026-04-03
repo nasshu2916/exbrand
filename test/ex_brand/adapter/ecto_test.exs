@@ -2,7 +2,8 @@
 defmodule ExBrand.Adapter.EctoTest do
   use ExUnit.Case, async: true
 
-  alias ExBrand.TestSupport.Fixtures.{PrefixedUserID, Types}
+  alias ExBrand.TestSupport.Fixtures.Brands.PrefixedUserID
+  alias ExBrand.TestSupport.Fixtures.Types
 
   test "ecto adapter exposes type helpers on the brand module" do
     assert Types.UserID.ecto_type() == Types.UserID.EctoType

@@ -2,7 +2,8 @@ defmodule ExBrand.EctoTest do
   use ExUnit.Case, async: true
 
   alias ExBrand.Ecto
-  alias ExBrand.TestSupport.Fixtures.{PrefixedUserID, Types}
+  alias ExBrand.TestSupport.Fixtures.Brands.PrefixedUserID
+  alias ExBrand.TestSupport.Fixtures.Types
 
   test "type_for/1 returns the ecto type for a brand" do
     assert Ecto.type_for(Types.UserID) == :integer
@@ -58,12 +59,15 @@ defmodule ExBrand.EctoTest do
     end
 
     try do
-      target_module = Module.concat([module_name])
+      parent_module = Module.concat([module_name])
+      target_module = Module.concat(parent_module, GeneratedBrand)
 
       {module, _bytecode} =
         Code.compile_string("""
         defmodule #{module_name} do
-          use ExBrand, :integer
+          use ExBrand
+
+          defbrand GeneratedBrand, :integer
         end
         """)
         |> Enum.find(fn {compiled_module, _bytecode} ->

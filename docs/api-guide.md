@@ -42,18 +42,20 @@ DB 境界の `load` / `dump` は brand module 直下ではなく、Ecto adapter 
 `{:ok, normalized_raw}` を返した場合、`normalized_raw` が brand の内部値として保持されます。
 
 ```elixir
-defmodule MyApp.Types.NormalizedEmail do
-  use ExBrand,
-      {:string,
-       validate: fn raw ->
-         normalized = raw |> String.trim() |> String.downcase()
+defmodule MyApp.Types do
+  use ExBrand
 
-         if String.contains?(normalized, "@") do
-           {:ok, normalized}
-         else
-           {:error, :invalid_email}
-         end
-       end}
+  defbrand NormalizedEmail,
+           {:string,
+            validate: fn raw ->
+              normalized = raw |> String.trim() |> String.downcase()
+
+              if String.contains?(normalized, "@") do
+                {:ok, normalized}
+              else
+                {:error, :invalid_email}
+              end
+            end}
 end
 ```
 
@@ -147,8 +149,10 @@ defmodule MyApp.Serializable do
   end
 end
 
-defmodule MyApp.Types.DerivedUserID do
-  use ExBrand, {:integer, derive: [{MyApp.Serializable.Protocol, tag: :user_id}]}
+defmodule MyApp.Types do
+  use ExBrand
+
+  defbrand DerivedUserID, {:integer, derive: [{MyApp.Serializable.Protocol, tag: :user_id}]}
 end
 ```
 
@@ -223,8 +227,10 @@ end
 ```
 
 ```elixir
-defmodule MyApp.Types.UserID do
-  use ExBrand, {MyApp.Types.PrefixedStringBase, prefix: "usr_", ecto_type: :string}
+defmodule MyApp.Types do
+  use ExBrand
+
+  defbrand UserID, {MyApp.Types.PrefixedStringBase, prefix: "usr_", ecto_type: :string}
 end
 ```
 
@@ -234,7 +240,7 @@ end
 - `"usr_"` で始まる文字列だけを受け付ける
 - `Ecto.Type.type/0` と `Ecto.ParameterizedType.type/1` は `:string` を返す
 
-base module に設定値が不要なら、`use ExBrand, MyApp.Types.PrefixedStringBase` のように
+base module に設定値が不要なら、`defbrand UserID, MyApp.Types.PrefixedStringBase` のように
 module 単体でも指定できます。
 
 ## Generic Helper API
@@ -322,8 +328,10 @@ defprotocol MyApp.Serializable do
   def serialize(term)
 end
 
-defmodule MyApp.Types.UserID do
-  use ExBrand, :integer
+defmodule MyApp.Types do
+  use ExBrand
+
+  defbrand UserID, :integer
 end
 
 defimpl MyApp.Serializable, for: MyApp.Types.UserID do
@@ -336,7 +344,9 @@ end
 `derive:` で導出可能な protocol であれば、brand 定義時に指定することもできます。
 
 ```elixir
-defmodule MyApp.Types.UserID do
-  use ExBrand, {:integer, derive: [MyApp.Serializable]}
+defmodule MyApp.Types do
+  use ExBrand
+
+  defbrand UserID, {:integer, derive: [MyApp.Serializable]}
 end
 ```

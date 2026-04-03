@@ -63,13 +63,13 @@ defmodule ExBrand.DSLTest do
                  end
   end
 
-  test "keyword-style standalone brand definition is rejected" do
+  test "standalone brand definition is rejected" do
     assert_raise ArgumentError,
-                 ~r/standalone brand syntax no longer accepts keyword options/,
+                 ~r/no longer defines standalone brands/,
                  fn ->
                    Code.compile_string("""
-                   defmodule LegacyKeywordStandaloneBrand do
-                     use ExBrand, base: :integer
+                   defmodule LegacyStandaloneBrand do
+                     use ExBrand, :integer
                    end
                    """)
                  end
@@ -101,8 +101,10 @@ defmodule ExBrand.DSLTest do
                      def ecto_type(_opts), do: :string
                    end
 
-                   defmodule InvalidCustomBaseBrand do
-                     use ExBrand, InvalidCustomBase
+                   defmodule InvalidCustomBaseBrandContainer do
+                     use ExBrand
+
+                     defbrand InvalidCustomBaseBrand, InvalidCustomBase
                    end
                    """)
                  end

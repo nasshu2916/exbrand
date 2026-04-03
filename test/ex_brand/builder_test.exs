@@ -1,16 +1,14 @@
 defmodule ExBrand.BuilderTest do
   use ExUnit.Case, async: true
 
-  alias ExBrand.TestSupport.Fixtures.{
+  alias ExBrand.TestSupport.Fixtures.Brands.{
     DerivedUserID,
+    GeneratedEmail,
     NormalizedEmail,
-    PrefixedUserID,
-    StandaloneEmail,
-    StandaloneGeneratedEmail,
-    StandaloneUserID,
-    Types
+    PrefixedUserID
   }
 
+  alias ExBrand.TestSupport.Fixtures.Types
   alias ExBrand.TestSupport.Serializable
 
   test "integer brands are distinct modules" do
@@ -88,7 +86,8 @@ defmodule ExBrand.BuilderTest do
   test "gen returns configured generator expression" do
     assert Types.UserID.gen() == nil
     assert Types.GeneratedUserID.gen() == {:integer_generator, min: 1}
-    assert StandaloneGeneratedEmail.gen() == {:email_generator, normalize: true}
+
+    assert GeneratedEmail.gen() == {:email_generator, normalize: true}
   end
 
   test "validate option rejects invalid value" do
@@ -113,9 +112,7 @@ defmodule ExBrand.BuilderTest do
       compile_brand_module_with_signature_verification(
         true,
         "SignedEmailForCastBrand",
-        """
-        use ExBrand, {:string, validate: &String.contains?(&1, "@"), error: :invalid_email}
-        """
+        "defbrand GeneratedBrand, {:string, validate: &String.contains?(&1, \"@\"), error: :invalid_email}"
       )
 
     forged_email = struct(module, __value__: "invalid", __signature__: 0)
@@ -182,19 +179,6 @@ defmodule ExBrand.BuilderTest do
     end
   end
 
-  test "low-level API defines standalone brand module" do
-    user_id = StandaloneUserID.new!(1)
-
-    assert StandaloneUserID.unwrap(user_id) == 1
-    assert StandaloneUserID.__base__() == :integer
-    assert inspect(user_id) == "#StandaloneUserID<1>"
-  end
-
-  test "low-level API supports validation options" do
-    assert StandaloneEmail.new("user@example.com") |> elem(0) == :ok
-    assert StandaloneEmail.new("invalid") == {:error, :invalid_email}
-  end
-
   test "custom base module can validate user-defined raw types" do
     assert {:ok, user_id} = PrefixedUserID.new("usr_123")
     assert PrefixedUserID.unwrap(user_id) == "usr_123"
@@ -257,8 +241,10 @@ defmodule ExBrand.BuilderTest do
   test "name option rejects unsupported shapes" do
     assert_raise ArgumentError, ~r/name must be a string or atom/, fn ->
       Code.compile_string("""
-      defmodule InvalidNamedBrand do
-        use ExBrand, {:integer, name: 123}
+      defmodule InvalidNamedBrandContainer do
+        use ExBrand
+
+        defbrand InvalidNamedBrand, {:integer, name: 123}
       end
       """)
     end
@@ -281,8 +267,10 @@ defmodule ExBrand.BuilderTest do
                  ~r/derive must be a protocol or list of protocols/,
                  fn ->
                    Code.compile_string("""
-                   defmodule InvalidDerivedBrand do
-                     use ExBrand, {:integer, derive: "Serializable"}
+                   defmodule InvalidDerivedBrandContainer do
+                     use ExBrand
+
+                     defbrand InvalidDerivedBrand, {:integer, derive: "Serializable"}
                    end
                    """)
                  end
@@ -292,7 +280,7 @@ defmodule ExBrand.BuilderTest do
     compile_brand_module_with_signature_verification(
       enabled,
       module_name,
-      "use ExBrand, :integer"
+      "defbrand GeneratedBrand, :integer"
     )
   end
 
@@ -305,11 +293,14 @@ defmodule ExBrand.BuilderTest do
     end
 
     try do
-      target_module = Module.concat([module_name])
+      parent_module = Module.concat([module_name])
+      target_module = Module.concat(parent_module, GeneratedBrand)
 
       {module, _bytecode} =
         Code.compile_string("""
         defmodule #{module_name} do
+          use ExBrand
+
           #{module_body}
         end
         """)

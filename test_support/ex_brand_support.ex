@@ -164,39 +164,30 @@ defmodule ExBrand.TestSupport.Fixtures.SelectivelyAliasedTypes do
   def user_id_base, do: UserID.__base__()
 end
 
-defmodule ExBrand.TestSupport.Fixtures.StandaloneUserID do
-  use ExBrand, :integer
-end
+defmodule ExBrand.TestSupport.Fixtures.Brands do
+  use ExBrand
 
-defmodule ExBrand.TestSupport.Fixtures.StandaloneEmail do
-  use ExBrand, {:string, validate: &String.contains?(&1, "@"), error: :invalid_email}
-end
+  defbrand GeneratedEmail, {:string, generator: fn -> {:email_generator, normalize: true} end}
 
-defmodule ExBrand.TestSupport.Fixtures.StandaloneGeneratedEmail do
-  use ExBrand, {:string, generator: fn -> {:email_generator, normalize: true} end}
-end
+  defbrand NormalizedEmail,
+           {:string,
+            validate: fn raw ->
+              normalized = raw |> String.trim() |> String.downcase()
 
-defmodule ExBrand.TestSupport.Fixtures.NormalizedEmail do
-  use ExBrand,
-      {:string,
-       validate: fn raw ->
-         normalized = raw |> String.trim() |> String.downcase()
+              if String.contains?(normalized, "@") do
+                {:ok, normalized}
+              else
+                {:error, :invalid_email}
+              end
+            end}
 
-         if String.contains?(normalized, "@") do
-           {:ok, normalized}
-         else
-           {:error, :invalid_email}
-         end
-       end}
-end
+  defbrand DerivedUserID,
+           {:integer, derive: [{ExBrand.TestSupport.Serializable, tag: :user_id}]}
 
-defmodule ExBrand.TestSupport.Fixtures.DerivedUserID do
-  use ExBrand, {:integer, derive: [{ExBrand.TestSupport.Serializable, tag: :user_id}]}
-end
-
-defmodule ExBrand.TestSupport.Fixtures.PrefixedUserID do
-  use ExBrand,
-      {ExBrand.TestSupport.CustomBases.PrefixedString, prefix: "usr_", ecto_type: :string}
+  defbrand PrefixedUserID,
+           {ExBrand.TestSupport.CustomBases.PrefixedString,
+            prefix: "usr_",
+            ecto_type: :string}
 end
 
 defmodule ExBrand.TestSupport.Fixtures.AddressSchema do

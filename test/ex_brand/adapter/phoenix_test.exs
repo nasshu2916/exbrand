@@ -2,7 +2,8 @@
 defmodule ExBrand.Adapter.PhoenixTest do
   use ExUnit.Case, async: true
 
-  alias ExBrand.TestSupport.Fixtures.{NormalizedEmail, Types}
+  alias ExBrand.TestSupport.Fixtures.Brands.NormalizedEmail
+  alias ExBrand.TestSupport.Fixtures.Types
 
   test "phoenix param adapter delegates to the raw value protocol" do
     user_id = Types.UserID.new!(42)
@@ -38,12 +39,15 @@ defmodule ExBrand.Adapter.PhoenixTest do
     end
 
     try do
-      target_module = Module.concat([module_name])
+      parent_module = Module.concat([module_name])
+      target_module = Module.concat(parent_module, GeneratedBrand)
 
       {module, _bytecode} =
         Code.compile_string("""
         defmodule #{module_name} do
-          use ExBrand, :integer
+          use ExBrand
+
+          defbrand GeneratedBrand, :integer
         end
         """)
         |> Enum.find(fn {compiled_module, _bytecode} ->
