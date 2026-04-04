@@ -49,6 +49,33 @@ defmodule ExBrand.DSLTest do
     assert module.email_name() == "Email Address"
   end
 
+  test "defbrand can be declared in a module that also defines defstruct" do
+    modules =
+      Code.compile_string("""
+      defmodule StructBackedTypes do
+        use ExBrand, aliases: [UserID]
+
+        defstruct [user_id: nil]
+
+        def new_struct(id), do: %__MODULE__{user_id: UserID.new!(id)}
+        def unwrap_struct(%__MODULE__{user_id: user_id}), do: UserID.unwrap(user_id)
+
+        defbrand UserID, :integer
+      end
+      """)
+
+    {module, _bytecode} =
+      Enum.find(modules, fn {compiled_module, _bytecode} ->
+        compiled_module == StructBackedTypes
+      end)
+
+    struct_value = module.new_struct(1)
+    brand_module = Module.concat(module, UserID)
+
+    assert struct_value.user_id == brand_module.new!(1)
+    assert module.unwrap_struct(struct_value) == 1
+  end
+
   test "keyword-style brand definition is rejected" do
     assert_raise ArgumentError,
                  ~r/keyword-style defbrand syntax is no longer supported/,

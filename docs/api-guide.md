@@ -193,6 +193,35 @@ end
 
 `aliases:` が未指定、または `false` の場合、alias は生成されません。
 
+## Struct Module での利用
+
+`defbrand` は `defstruct` を持つ module 内でも利用できます。
+struct フィールドへ brand 値を詰める例は次のとおりです。
+
+```elixir
+defmodule MyApp.Account do
+  use ExBrand, aliases: [UserID, Email]
+
+  defstruct [:user_id, :email]
+  @type t() :: %__MODULE__{
+          user_id: UserID.t(),
+          email: Email.t()
+        }
+
+  defbrand UserID, :integer
+  defbrand Email, {:string, validate: &String.contains?(&1, "@"), error: :invalid_email}
+
+  def new!(attrs) do
+    %__MODULE__{
+      user_id: UserID.new!(attrs.user_id),
+      email: Email.new!(attrs.email)
+    }
+  end
+end
+```
+
+`aliases:` を使わない場合は、`__MODULE__.UserID.new!(...)` のように親 module 配下の brand module を完全修飾で参照してください。
+
 ## Custom Base Type
 
 brand spec には組み込みの `:integer` / `:binary` / `:string` だけでなく、

@@ -65,6 +65,33 @@ defmodule MyApp.Types do
 end
 ```
 
+## Struct と併用する
+
+`defbrand` は `defstruct` を持つ module の中でも定義できます。
+struct の関数から短い名前で brand module を参照したい場合は `aliases:` を併用します。
+
+```elixir
+defmodule MyApp.Account do
+  use ExBrand, aliases: [UserID]
+
+  defstruct [:user_id, :email]
+  @type t() :: %__MODULE__{
+          user_id: UserID.t(),
+          email: __MODULE__.Email.t()
+        }
+
+  defbrand UserID, :integer
+  defbrand Email, {:string, validate: &String.contains?(&1, "@"), error: :invalid_email}
+
+  def new!(attrs) do
+    %__MODULE__{
+      user_id: UserID.new!(attrs.user_id),
+      email: Email.new!(attrs.email)
+    }
+  end
+end
+```
+
 ## Schema Validation
 
 ```elixir

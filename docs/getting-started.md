@@ -50,6 +50,36 @@ false = MyApp.Types.UserID.valid?("1")
 - `ecto_type/0`
 - `ecto_parameterized_type/0`
 
+## `defstruct` と一緒に使う
+
+`defbrand` は `defstruct` を持つ module の中でもそのまま定義できます。
+同じ module の関数から `UserID.new!/1` のような短縮名で参照したい場合は、
+`use ExBrand, aliases: [...]` を指定します。
+
+```elixir
+defmodule MyApp.Account do
+  use ExBrand, aliases: [UserID, Email]
+
+  defstruct [:user_id, :email]
+  @type t() :: %__MODULE__{
+          user_id: UserID.t(),
+          email: Email.t()
+        }
+
+  defbrand UserID, :integer
+  defbrand Email, {:string, validate: &String.contains?(&1, "@"), error: :invalid_email}
+
+  def new!(attrs) do
+    %__MODULE__{
+      user_id: UserID.new!(attrs.user_id),
+      email: Email.new!(attrs.email)
+    }
+  end
+end
+```
+
+`aliases:` を使わない場合は `__MODULE__.UserID.new!(...)` のように完全修飾で参照できます。
+
 ## Custom Base Type
 
 組み込みの `:integer` / `:binary` / `:string` 以外を使いたい場合は、
