@@ -53,7 +53,7 @@ defmodule ExBrand do
   end
 
   @doc """
-  親モジュール配下に brand module を 1 つ定義する。
+  親モジュール配下に brand module を定義する。
   """
   defmacro defbrand(name, base_or_spec) do
     {base, opts} = extract_brand_spec(base_or_spec)
