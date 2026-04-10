@@ -28,6 +28,19 @@ defmodule ExBrand.SchemaTest do
     assert result.published_at == "2026-04-02T12:34:56Z"
   end
 
+  test "compiled schema field lookup supports atom keys for string aliases" do
+    assert {:ok, result} =
+             UserSchema.validate(%{
+               contactEmail: "contact@example.com",
+               address: %{city: "Tokyo", zip: "15000"},
+               user_id: 1,
+               email: "user@example.com",
+               age: 20
+             })
+
+    assert Types.Email.unwrap(result.contact_email) == "contact@example.com"
+  end
+
   test "schema accumulates field errors from tuple constraints" do
     assert {:error, errors} =
              UserSchema.validate(%{

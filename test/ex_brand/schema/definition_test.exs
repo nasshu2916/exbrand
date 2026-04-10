@@ -34,6 +34,7 @@ defmodule ExBrand.Schema.DefinitionTest do
       Definition.compile_runtime_schema!({
         %{
           user_id: Types.UserID,
+          contact_email: {Types.Email, field: "contactEmail"},
           profile: {AddressSchema, optional: true},
           tags: {[{:string, min_length: 2}], min_items: 1}
         },
@@ -43,13 +44,31 @@ defmodule ExBrand.Schema.DefinitionTest do
     assert Definition.compiled_runtime_schema?(compiled)
 
     assert {:compiled, :map, compiled_fields, [tolerant: false]} = compiled
-    assert {:compiled, :terminal, {:brand, Types.UserID}, []} = compiled_fields.user_id
 
-    assert {:compiled, :terminal, {:schema, AddressSchema}, [optional: true]} =
+    assert %{
+             schema: {:compiled, :terminal, {:brand, Types.UserID}, []},
+             lookup: [:user_id, "user_id"]
+           } =
+             compiled_fields.user_id
+
+    assert %{
+             schema: {:compiled, :terminal, {:brand, Types.Email}, [field: "contactEmail"]},
+             lookup: ["contactEmail", {:existing_atom_binary, "contactEmail"}]
+           } =
+             compiled_fields.contact_email
+
+    assert %{
+             schema: {:compiled, :terminal, {:schema, AddressSchema}, [optional: true]},
+             lookup: [:profile, "profile"]
+           } =
              compiled_fields.profile
 
-    assert {:compiled, :list, {:compiled, :terminal, {:base, :string}, [min_length: 2]},
-            [min_items: 1]} = compiled_fields.tags
+    assert %{
+             schema:
+               {:compiled, :list, {:compiled, :terminal, {:base, :string}, [min_length: 2]},
+                [min_items: 1]},
+             lookup: [:tags, "tags"]
+           } = compiled_fields.tags
   end
 
   test "normalize_field_opts/1 rejects unsupported field options" do

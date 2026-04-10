@@ -63,8 +63,11 @@ defmodule ExBrand.Schema.Definition do
 
   @type runtime_node_kind() :: :list | :map | :terminal
   @type runtime_terminal() :: {:base, term()} | {:brand, module()} | {:schema, module()}
+  @type runtime_lookup_entry() :: atom() | String.t() | {:existing_atom_binary, String.t()}
+  @type runtime_field() :: %{lookup: [runtime_lookup_entry(), ...], schema: runtime_node()}
   @type runtime_node() ::
-          {:compiled, runtime_node_kind(), runtime_terminal() | runtime_node() | map(), keyword()}
+          {:compiled, runtime_node_kind(),
+           runtime_terminal() | runtime_node() | %{atom() => runtime_field()}, keyword()}
 
   @spec compile_runtime_schema!(term()) :: runtime_node()
   def compile_runtime_schema!(schema) do
@@ -74,7 +77,7 @@ defmodule ExBrand.Schema.Definition do
       is_map(base_schema) ->
         compiled_fields =
           Map.new(base_schema, fn {name, field_schema} ->
-            {name, compile_runtime_schema!(field_schema)}
+            {name, compile_runtime_field!(name, field_schema)}
           end)
 
         {:compiled, :map, compiled_fields, opts}
@@ -102,6 +105,26 @@ defmodule ExBrand.Schema.Definition do
       do: true
 
   def compiled_runtime_schema?(_schema), do: false
+
+  @spec compile_runtime_field!(atom(), term()) :: runtime_field()
+  def compile_runtime_field!(name, field_schema) when is_atom(name) do
+    {_base_schema, opts} = split_schema_opts(field_schema)
+
+    %{
+      schema: compile_runtime_schema!(field_schema),
+      lookup: compile_field_lookup(name, opts)
+    }
+  end
+
+  defp compile_field_lookup(name, opts) do
+    case Keyword.get(opts, :field, name) do
+      external_name when is_atom(external_name) ->
+        [external_name, Atom.to_string(external_name)]
+
+      external_name when is_binary(external_name) ->
+        [external_name, {:existing_atom_binary, external_name}]
+    end
+  end
 
   @spec merge_field_opts(term(), keyword()) :: {term(), keyword()}
   def merge_field_opts(schema, opts) do

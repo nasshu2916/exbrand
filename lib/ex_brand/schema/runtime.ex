@@ -73,11 +73,13 @@ defmodule ExBrand.Schema.Runtime do
     {normalized, errors, consumed_keys} =
       Enum.reduce(schema_fields, {%{}, %{}, MapSet.new()}, fn {name, field_schema}, acc ->
         {normalized, errors, consumed_keys} = acc
+        schema = field_schema(field_schema)
         field_opts = field_opts(field_schema)
+        field_lookup = field_lookup(field_schema, name, field_opts)
 
-        case fetch_field_value(value, name, field_opts) do
+        case fetch_field_value(value, field_lookup) do
           {:ok, field_value, used_key} ->
-            case validate_schema(field_value, field_schema) do
+            case validate_schema(field_value, schema) do
               {:ok, normalized_value} ->
                 {Map.put(normalized, name, normalized_value), errors,
                  MapSet.put(consumed_keys, used_key)}
@@ -89,7 +91,7 @@ defmodule ExBrand.Schema.Runtime do
           :missing ->
             handle_missing_field(
               name,
-              field_schema_without_opts(field_schema),
+              field_schema_without_opts(schema),
               field_opts,
               normalized,
               errors,
@@ -165,7 +167,38 @@ defmodule ExBrand.Schema.Runtime do
     end
   end
 
-  defp fetch_field_value(params, name, opts) do
+  defp atomizable_key?(key) do
+    _ = String.to_existing_atom(key)
+    true
+  rescue
+    ArgumentError -> false
+  end
+
+  defp field_schema(%{schema: schema}), do: schema
+  defp field_schema(schema), do: schema
+
+  defp field_lookup(%{lookup: lookup}, _name, _opts), do: {:compiled, lookup}
+  defp field_lookup(_schema, name, opts), do: {:raw, name, opts}
+
+  defp field_opts(%{schema: schema}), do: field_opts(schema)
+  defp field_opts({:compiled, _kind, _data, opts}), do: opts
+  defp field_opts(schema), do: elem(Definition.split_schema_opts(schema), 1)
+
+  defp field_schema_without_opts(%{schema: schema}), do: field_schema_without_opts(schema)
+  defp field_schema_without_opts({:compiled, kind, data, _opts}), do: {:compiled, kind, data, []}
+  defp field_schema_without_opts(schema), do: elem(Definition.split_schema_opts(schema), 0)
+
+  defp compiled_base_schema(:map, schema_fields), do: {:compiled, :map, schema_fields, []}
+  defp compiled_base_schema(:list, item_schema), do: {:compiled, :list, item_schema, []}
+
+  defp compiled_base_schema(:terminal, resolved_schema),
+    do: {:compiled, :terminal, resolved_schema, []}
+
+  defp fetch_field_value(params, {:compiled, lookup}) do
+    fetch_compiled_field_value(params, lookup)
+  end
+
+  defp fetch_field_value(params, {:raw, name, opts}) do
     external_name = Keyword.get(opts, :field, name)
 
     cond do
@@ -189,24 +222,25 @@ defmodule ExBrand.Schema.Runtime do
     end
   end
 
-  defp atomizable_key?(key) do
-    _ = String.to_existing_atom(key)
-    true
-  rescue
-    ArgumentError -> false
+  defp fetch_compiled_field_value(_params, []), do: :missing
+
+  defp fetch_compiled_field_value(params, [key | rest]) when is_atom(key) or is_binary(key) do
+    if Map.has_key?(params, key) do
+      {:ok, Map.fetch!(params, key), key}
+    else
+      fetch_compiled_field_value(params, rest)
+    end
   end
 
-  defp field_opts({:compiled, _kind, _data, opts}), do: opts
-  defp field_opts(schema), do: elem(Definition.split_schema_opts(schema), 1)
-
-  defp field_schema_without_opts({:compiled, kind, data, _opts}), do: {:compiled, kind, data, []}
-  defp field_schema_without_opts(schema), do: elem(Definition.split_schema_opts(schema), 0)
-
-  defp compiled_base_schema(:map, schema_fields), do: {:compiled, :map, schema_fields, []}
-  defp compiled_base_schema(:list, item_schema), do: {:compiled, :list, item_schema, []}
-
-  defp compiled_base_schema(:terminal, resolved_schema),
-    do: {:compiled, :terminal, resolved_schema, []}
+  defp fetch_compiled_field_value(params, [{:existing_atom_binary, key} | rest]) do
+    with true <- atomizable_key?(key),
+         atom_key <- String.to_atom(key),
+         true <- Map.has_key?(params, atom_key) do
+      {:ok, Map.fetch!(params, atom_key), atom_key}
+    else
+      _ -> fetch_compiled_field_value(params, rest)
+    end
+  end
 
   defp apply_constraints(value, base_schema, opts) do
     constraint_input = constraint_input(base_schema, value)
