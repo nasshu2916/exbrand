@@ -273,8 +273,14 @@ defmodule ExBrand.Schema.Runtime do
 
   defp apply_compiled_constraints(value, base_schema, metadata) do
     constraint_input = constraint_input(base_schema, value)
+    generic_context = build_compiled_generic_context(constraint_input)
 
-    with :ok <- run_compiled_generic_checks(constraint_input, metadata.generic_checks),
+    with :ok <-
+           run_compiled_generic_checks(
+             constraint_input,
+             metadata.generic_checks,
+             generic_context
+           ),
          {:ok, normalized_value} <-
            run_compiled_custom_validator(
              value,
@@ -312,10 +318,12 @@ defmodule ExBrand.Schema.Runtime do
   end
 
   defp apply_compiled_list_constraints(original_items, normalized_items, item_errors, checks) do
+    list_context = build_compiled_list_context(original_items, checks)
+
     errors =
       item_errors
-      |> maybe_put_self_error(run_compiled_list_check(original_items, checks, :min_items))
-      |> maybe_put_self_error(run_compiled_list_check(original_items, checks, :max_items))
+      |> maybe_put_self_error(run_compiled_list_check(checks, :min_items, list_context))
+      |> maybe_put_self_error(run_compiled_list_check(checks, :max_items, list_context))
       |> maybe_put_self_error(run_compiled_list_uniqueness_check(original_items, checks))
 
     case map_size(errors) do
@@ -327,47 +335,68 @@ defmodule ExBrand.Schema.Runtime do
   defp maybe_put_self_error(errors, :ok), do: errors
   defp maybe_put_self_error(errors, {:error, reason}), do: Map.put(errors, :__self__, reason)
 
-  defp run_compiled_generic_checks(_value, []), do: :ok
+  defp build_compiled_generic_context(value) when is_binary(value),
+    do: %{string_length: String.length(value)}
 
-  defp run_compiled_generic_checks(value, [{:enum, enum_values} | rest]) do
-    if value in enum_values,
-      do: run_compiled_generic_checks(value, rest),
-      else: {:error, :not_in_enum}
-  end
+  defp build_compiled_generic_context(_value), do: %{}
 
-  defp run_compiled_generic_checks(value, [{:minimum, minimum} | rest]) do
-    if value >= minimum,
-      do: run_compiled_generic_checks(value, rest),
-      else: {:error, :less_than_minimum}
-  end
-
-  defp run_compiled_generic_checks(value, [{:maximum, maximum} | rest]) do
-    if value <= maximum,
-      do: run_compiled_generic_checks(value, rest),
-      else: {:error, :greater_than_maximum}
-  end
-
-  defp run_compiled_generic_checks(value, [{:min_length, minimum} | rest]) do
-    if String.length(value) >= minimum,
-      do: run_compiled_generic_checks(value, rest),
-      else: {:error, :shorter_than_min_length}
-  end
-
-  defp run_compiled_generic_checks(value, [{:max_length, maximum} | rest]) do
-    if String.length(value) <= maximum,
-      do: run_compiled_generic_checks(value, rest),
-      else: {:error, :longer_than_max_length}
-  end
-
-  defp run_compiled_generic_checks(value, [{:format, :email} | rest]) do
-    with :ok <- validate_email_format(value) do
-      run_compiled_generic_checks(value, rest)
+  defp build_compiled_list_context(items, checks) do
+    if Enum.any?(checks, fn
+         {:min_items, _value} -> true
+         {:max_items, _value} -> true
+         _ -> false
+       end) do
+      %{item_count: length(items)}
+    else
+      %{}
     end
   end
 
-  defp run_compiled_generic_checks(value, [{:format, :datetime} | rest]) do
+  defp run_compiled_generic_checks(_value, [], _context), do: :ok
+
+  defp run_compiled_generic_checks(value, [{:enum, enum_values} | rest], context) do
+    if value in enum_values,
+      do: run_compiled_generic_checks(value, rest, context),
+      else: {:error, :not_in_enum}
+  end
+
+  defp run_compiled_generic_checks(value, [{:minimum, minimum} | rest], context) do
+    if value >= minimum,
+      do: run_compiled_generic_checks(value, rest, context),
+      else: {:error, :less_than_minimum}
+  end
+
+  defp run_compiled_generic_checks(value, [{:maximum, maximum} | rest], context) do
+    if value <= maximum,
+      do: run_compiled_generic_checks(value, rest, context),
+      else: {:error, :greater_than_maximum}
+  end
+
+  defp run_compiled_generic_checks(value, [{:min_length, minimum} | rest], %{
+         string_length: length
+       }) do
+    if length >= minimum,
+      do: run_compiled_generic_checks(value, rest, %{string_length: length}),
+      else: {:error, :shorter_than_min_length}
+  end
+
+  defp run_compiled_generic_checks(value, [{:max_length, maximum} | rest], %{
+         string_length: length
+       }) do
+    if length <= maximum,
+      do: run_compiled_generic_checks(value, rest, %{string_length: length}),
+      else: {:error, :longer_than_max_length}
+  end
+
+  defp run_compiled_generic_checks(value, [{:format, :email} | rest], context) do
+    with :ok <- validate_email_format(value) do
+      run_compiled_generic_checks(value, rest, context)
+    end
+  end
+
+  defp run_compiled_generic_checks(value, [{:format, :datetime} | rest], context) do
     with :ok <- validate_datetime_format(value) do
-      run_compiled_generic_checks(value, rest)
+      run_compiled_generic_checks(value, rest, context)
     end
   end
 
@@ -381,22 +410,22 @@ defmodule ExBrand.Schema.Runtime do
     )
   end
 
-  defp run_compiled_list_check(_items, [], _kind), do: :ok
+  defp run_compiled_list_check([], _kind, _context), do: :ok
 
-  defp run_compiled_list_check(items, [{:min_items, value} | rest], :min_items) do
-    if length(items) >= value,
-      do: run_compiled_list_check(items, rest, :min_items),
+  defp run_compiled_list_check([{:min_items, value} | rest], :min_items, %{item_count: item_count}) do
+    if item_count >= value,
+      do: run_compiled_list_check(rest, :min_items, %{item_count: item_count}),
       else: compiled_list_check_error(:min_items)
   end
 
-  defp run_compiled_list_check(items, [{:max_items, value} | rest], :max_items) do
-    if length(items) <= value,
-      do: run_compiled_list_check(items, rest, :max_items),
+  defp run_compiled_list_check([{:max_items, value} | rest], :max_items, %{item_count: item_count}) do
+    if item_count <= value,
+      do: run_compiled_list_check(rest, :max_items, %{item_count: item_count}),
       else: compiled_list_check_error(:max_items)
   end
 
-  defp run_compiled_list_check(items, [_other | rest], kind),
-    do: run_compiled_list_check(items, rest, kind)
+  defp run_compiled_list_check([_other | rest], kind, context),
+    do: run_compiled_list_check(rest, kind, context)
 
   defp run_compiled_list_uniqueness_check(items, checks) do
     if :unique_items in checks do
