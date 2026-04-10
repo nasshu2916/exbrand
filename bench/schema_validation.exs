@@ -57,25 +57,42 @@ raw_schema = ExBrand.Bench.UserSchema.__schema__()
 user_id = 1
 email = "user@example.com"
 
+defmodule ExBrand.Bench.Config do
+  @iterations 10
+  def iterations, do: @iterations
+end
+
 Benchee.run(
   %{
     "brand user_id new/1" => fn ->
-      {:ok, _brand} = ExBrand.Bench.Types.UserID.new(user_id)
+      Enum.each(1..ExBrand.Bench.Config.iterations(), fn _ ->
+        {:ok, _brand} = ExBrand.Bench.Types.UserID.new(user_id)
+      end)
     end,
     "primitive user_id validate" => fn ->
-      {:ok, _value} = ExBrand.Bench.Primitive.validate_user_id(user_id)
+      Enum.each(1..ExBrand.Bench.Config.iterations(), fn _ ->
+        {:ok, _value} = ExBrand.Bench.Primitive.validate_user_id(user_id)
+      end)
     end,
     "brand email new/1" => fn ->
-      {:ok, _brand} = ExBrand.Bench.Types.Email.new(email)
+      Enum.each(1..ExBrand.Bench.Config.iterations(), fn _ ->
+        {:ok, _brand} = ExBrand.Bench.Types.Email.new(email)
+      end)
     end,
     "primitive email validate" => fn ->
-      {:ok, _value} = ExBrand.Bench.Primitive.validate_email(email)
+      Enum.each(1..ExBrand.Bench.Config.iterations(), fn _ ->
+        {:ok, _value} = ExBrand.Bench.Primitive.validate_email(email)
+      end)
     end,
     "module schema validate/1" => fn ->
-      {:ok, _result} = ExBrand.Bench.UserSchema.validate(user_input)
+      Enum.each(1..ExBrand.Bench.Config.iterations(), fn _ ->
+        {:ok, _result} = ExBrand.Bench.UserSchema.validate(user_input)
+      end)
     end,
     "raw schema validate/2" => fn ->
-      {:ok, _result} = ExBrand.Schema.validate(user_input, raw_schema)
+      Enum.each(1..ExBrand.Bench.Config.iterations(), fn _ ->
+        {:ok, _result} = ExBrand.Schema.validate(user_input, raw_schema)
+      end)
     end
   },
   time: 3,
