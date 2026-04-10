@@ -25,7 +25,8 @@ defmodule ExBrand.MixProject do
     [
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
-      {:ex_doc, "~> 0.38", only: :dev, runtime: false}
+      {:ex_doc, "~> 0.38", only: :dev, runtime: false},
+      {:benchee, "~> 1.3", only: :dev, runtime: false}
     ]
   end
 
@@ -43,7 +44,8 @@ defmodule ExBrand.MixProject do
       extras: [
         "README.md",
         "docs/getting-started.md",
-        "docs/api-guide.md"
+        "docs/api-guide.md",
+        "docs/benchmarking.md"
       ],
       source_ref: "main"
     ]

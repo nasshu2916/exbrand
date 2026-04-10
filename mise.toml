@@ -24,6 +24,10 @@ run = [
   "MIX_ENV=test mix test"
 ]
 
+[tasks.coverage]
+description = "Run the test suite with coverage and print the total coverage rate"
+run = "mix test --cover"
+
 [tasks.docs]
 description = "Generate project documentation"
 run = "mix docs"
