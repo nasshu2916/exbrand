@@ -9,6 +9,7 @@ defmodule ExBrand.MixProject do
       elixirc_options: [warnings_as_errors: true],
       consolidate_protocols: Mix.env() == :prod,
       start_permanent: Mix.env() == :prod,
+      test_ignore_filters: [~r/\.ex$/],
       deps: deps(),
       dialyzer: dialyzer(),
       docs: docs()
