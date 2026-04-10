@@ -65,9 +65,18 @@ defmodule ExBrand.Schema.Definition do
   @type runtime_terminal() :: {:base, term()} | {:brand, module()} | {:schema, module()}
   @type runtime_lookup_entry() :: atom() | String.t() | {:existing_atom_binary, String.t()}
   @type runtime_field() :: %{lookup: [runtime_lookup_entry(), ...], schema: runtime_node()}
+  @type runtime_constraint_plan() ::
+          %{
+            generic_checks: [term()],
+            list_checks: [term()],
+            validator: (term() -> term()) | nil,
+            validator_error: term()
+          }
   @type runtime_node() ::
           {:compiled, runtime_node_kind(),
            runtime_terminal() | runtime_node() | %{atom() => runtime_field()}, keyword()}
+
+  @compiled_metadata_key :__compiled_metadata__
 
   @spec compile_runtime_schema!(term()) :: runtime_node()
   def compile_runtime_schema!(schema) do
@@ -80,12 +89,13 @@ defmodule ExBrand.Schema.Definition do
             {name, compile_runtime_field!(name, field_schema)}
           end)
 
-        {:compiled, :map, compiled_fields, opts}
+        {:compiled, :map, compiled_fields, attach_runtime_metadata(base_schema, opts)}
 
       is_list(base_schema) ->
         case base_schema do
           [item_schema] ->
-            {:compiled, :list, compile_runtime_schema!(item_schema), opts}
+            {:compiled, :list, compile_runtime_schema!(item_schema),
+             attach_runtime_metadata(base_schema, opts)}
 
           _ ->
             raise ArgumentError, "list schema must contain exactly one item schema"
@@ -93,8 +103,11 @@ defmodule ExBrand.Schema.Definition do
 
       true ->
         case resolve_terminal_schema(base_schema) do
-          {:ok, resolved_schema} -> {:compiled, :terminal, resolved_schema, opts}
-          :error -> raise ArgumentError, "invalid schema: #{inspect(schema)}"
+          {:ok, resolved_schema} ->
+            {:compiled, :terminal, resolved_schema, attach_runtime_metadata(base_schema, opts)}
+
+          :error ->
+            raise ArgumentError, "invalid schema: #{inspect(schema)}"
         end
     end
   end
@@ -125,6 +138,51 @@ defmodule ExBrand.Schema.Definition do
         [external_name, {:existing_atom_binary, external_name}]
     end
   end
+
+  @spec compiled_runtime_metadata(keyword()) :: runtime_constraint_plan() | nil
+  def compiled_runtime_metadata(opts) when is_list(opts),
+    do: Keyword.get(opts, @compiled_metadata_key)
+
+  defp attach_runtime_metadata(base_schema, opts) do
+    Keyword.put(opts, @compiled_metadata_key, compile_runtime_metadata(base_schema, opts))
+  end
+
+  defp compile_runtime_metadata(base_schema, opts) do
+    %{
+      generic_checks: compile_generic_checks(opts),
+      list_checks: compile_list_checks(base_schema, opts),
+      validator: Keyword.get(opts, :validate),
+      validator_error: Keyword.get(opts, :error, :invalid_value)
+    }
+  end
+
+  defp compile_generic_checks(opts) do
+    []
+    |> maybe_append_generic_check(:enum, Keyword.get(opts, :enum))
+    |> maybe_append_generic_check(:minimum, Keyword.get(opts, :minimum))
+    |> maybe_append_generic_check(:maximum, Keyword.get(opts, :maximum))
+    |> maybe_append_generic_check(:min_length, Keyword.get(opts, :min_length))
+    |> maybe_append_generic_check(:max_length, Keyword.get(opts, :max_length))
+    |> maybe_append_generic_check(:format, Keyword.get(opts, :format))
+  end
+
+  defp maybe_append_generic_check(checks, _kind, nil), do: checks
+  defp maybe_append_generic_check(checks, kind, value), do: [{kind, value} | checks]
+
+  defp compile_list_checks(base_schema, opts) when is_list(base_schema) do
+    []
+    |> maybe_append_list_check(:min_items, Keyword.get(opts, :min_items))
+    |> maybe_append_list_check(:max_items, Keyword.get(opts, :max_items))
+    |> maybe_append_unique_items_check(Keyword.get(opts, :unique_items))
+  end
+
+  defp compile_list_checks(_base_schema, _opts), do: []
+
+  defp maybe_append_list_check(checks, _kind, nil), do: checks
+  defp maybe_append_list_check(checks, kind, value), do: [{kind, value} | checks]
+
+  defp maybe_append_unique_items_check(checks, true), do: [:unique_items | checks]
+  defp maybe_append_unique_items_check(checks, _value), do: checks
 
   @spec merge_field_opts(term(), keyword()) :: {term(), keyword()}
   def merge_field_opts(schema, opts) do

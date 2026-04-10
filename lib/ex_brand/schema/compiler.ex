@@ -3,14 +3,14 @@ defmodule ExBrand.Schema.Compiler do
 
   alias ExBrand.Schema.Definition
 
-  @spec build_field_ast!({atom(), term(), keyword()}) :: Macro.t()
+  @spec build_field_ast!({atom(), term(), Keyword.t()}) :: Macro.t()
   def build_field_ast!(field_definition) do
     field_definition
     |> build_field_definition!()
     |> build_field_ast()
   end
 
-  @spec build_field_definition!({atom(), term(), keyword()}) :: {atom(), term()}
+  @spec build_field_definition!({atom(), term(), Keyword.t()}) :: {atom(), {term(), Keyword.t()}}
   def build_field_definition!({name, schema, opts}) do
     unless is_atom(name) do
       raise ArgumentError, "field name must be an atom, got: #{inspect(name)}"

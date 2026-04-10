@@ -8,12 +8,14 @@ defmodule ExBrand.Schema.Runtime do
   def validate(value, schema), do: validate_schema(value, schema)
 
   defp validate_schema(value, {:compiled, kind, data, opts}) do
+    metadata = compiled_runtime_metadata(opts) || empty_compiled_runtime_metadata()
+
     if Keyword.get(opts, :nullable, false) and is_nil(value) do
       {:ok, nil}
     else
       with {:ok, typed_value} <- validate_compiled_typed_value(value, kind, data, opts),
            {:ok, constrained_value} <-
-             apply_constraints(typed_value, compiled_base_schema(kind, data), opts) do
+             apply_compiled_constraints(typed_value, compiled_base_schema(kind, data), metadata) do
         {:ok, constrained_value}
       else
         {:error, reason} -> {:error, wrap_error(reason, opts)}
@@ -128,7 +130,16 @@ defmodule ExBrand.Schema.Runtime do
 
     normalized_items = Enum.reverse(normalized_items)
 
-    case apply_list_constraints(value, normalized_items, item_errors, opts) do
+    result =
+      case compiled_list_checks(opts) do
+        nil ->
+          apply_list_constraints(value, normalized_items, item_errors, opts)
+
+        checks ->
+          apply_compiled_list_constraints(value, normalized_items, item_errors, checks)
+      end
+
+    case result do
       {:ok, normalized_value} -> {:ok, normalized_value}
       {:error, reason} -> {:error, reason}
     end
@@ -194,6 +205,24 @@ defmodule ExBrand.Schema.Runtime do
   defp compiled_base_schema(:terminal, resolved_schema),
     do: {:compiled, :terminal, resolved_schema, []}
 
+  defp compiled_runtime_metadata(opts), do: Definition.compiled_runtime_metadata(opts)
+
+  defp compiled_list_checks(opts) do
+    case compiled_runtime_metadata(opts) do
+      nil -> nil
+      metadata -> metadata.list_checks
+    end
+  end
+
+  defp empty_compiled_runtime_metadata do
+    %{
+      generic_checks: [],
+      list_checks: [],
+      validator: nil,
+      validator_error: :invalid_value
+    }
+  end
+
   defp fetch_field_value(params, {:compiled, lookup}) do
     fetch_compiled_field_value(params, lookup)
   end
@@ -242,6 +271,21 @@ defmodule ExBrand.Schema.Runtime do
     end
   end
 
+  defp apply_compiled_constraints(value, base_schema, metadata) do
+    constraint_input = constraint_input(base_schema, value)
+
+    with :ok <- run_compiled_generic_checks(constraint_input, metadata.generic_checks),
+         {:ok, normalized_value} <-
+           run_compiled_custom_validator(
+             value,
+             base_schema,
+             metadata.validator,
+             metadata.validator_error
+           ) do
+      {:ok, normalized_value}
+    end
+  end
+
   defp apply_constraints(value, base_schema, opts) do
     constraint_input = constraint_input(base_schema, value)
 
@@ -267,8 +311,103 @@ defmodule ExBrand.Schema.Runtime do
     end
   end
 
+  defp apply_compiled_list_constraints(original_items, normalized_items, item_errors, checks) do
+    errors =
+      item_errors
+      |> maybe_put_self_error(run_compiled_list_check(original_items, checks, :min_items))
+      |> maybe_put_self_error(run_compiled_list_check(original_items, checks, :max_items))
+      |> maybe_put_self_error(run_compiled_list_uniqueness_check(original_items, checks))
+
+    case map_size(errors) do
+      0 -> {:ok, normalized_items}
+      _ -> {:error, errors}
+    end
+  end
+
   defp maybe_put_self_error(errors, :ok), do: errors
   defp maybe_put_self_error(errors, {:error, reason}), do: Map.put(errors, :__self__, reason)
+
+  defp run_compiled_generic_checks(_value, []), do: :ok
+
+  defp run_compiled_generic_checks(value, [{:enum, enum_values} | rest]) do
+    if value in enum_values,
+      do: run_compiled_generic_checks(value, rest),
+      else: {:error, :not_in_enum}
+  end
+
+  defp run_compiled_generic_checks(value, [{:minimum, minimum} | rest]) do
+    if value >= minimum,
+      do: run_compiled_generic_checks(value, rest),
+      else: {:error, :less_than_minimum}
+  end
+
+  defp run_compiled_generic_checks(value, [{:maximum, maximum} | rest]) do
+    if value <= maximum,
+      do: run_compiled_generic_checks(value, rest),
+      else: {:error, :greater_than_maximum}
+  end
+
+  defp run_compiled_generic_checks(value, [{:min_length, minimum} | rest]) do
+    if String.length(value) >= minimum,
+      do: run_compiled_generic_checks(value, rest),
+      else: {:error, :shorter_than_min_length}
+  end
+
+  defp run_compiled_generic_checks(value, [{:max_length, maximum} | rest]) do
+    if String.length(value) <= maximum,
+      do: run_compiled_generic_checks(value, rest),
+      else: {:error, :longer_than_max_length}
+  end
+
+  defp run_compiled_generic_checks(value, [{:format, :email} | rest]) do
+    with :ok <- validate_email_format(value) do
+      run_compiled_generic_checks(value, rest)
+    end
+  end
+
+  defp run_compiled_generic_checks(value, [{:format, :datetime} | rest]) do
+    with :ok <- validate_datetime_format(value) do
+      run_compiled_generic_checks(value, rest)
+    end
+  end
+
+  defp run_compiled_custom_validator(value, base_schema, validator, error) do
+    Validator.apply_custom(
+      constraint_input(base_schema, value),
+      value,
+      validator,
+      error,
+      &validate_schema(&1, base_schema)
+    )
+  end
+
+  defp run_compiled_list_check(_items, [], _kind), do: :ok
+
+  defp run_compiled_list_check(items, [{:min_items, value} | rest], :min_items) do
+    if length(items) >= value,
+      do: run_compiled_list_check(items, rest, :min_items),
+      else: compiled_list_check_error(:min_items)
+  end
+
+  defp run_compiled_list_check(items, [{:max_items, value} | rest], :max_items) do
+    if length(items) <= value,
+      do: run_compiled_list_check(items, rest, :max_items),
+      else: compiled_list_check_error(:max_items)
+  end
+
+  defp run_compiled_list_check(items, [_other | rest], kind),
+    do: run_compiled_list_check(items, rest, kind)
+
+  defp run_compiled_list_uniqueness_check(items, checks) do
+    if :unique_items in checks do
+      if Enum.uniq(items) == items, do: :ok, else: {:error, :items_not_unique}
+    else
+      :ok
+    end
+  end
+
+  defp compiled_list_check_error(:min_items), do: {:error, :fewer_than_min_items}
+  defp compiled_list_check_error(:max_items), do: {:error, :more_than_max_items}
 
   defp validate_enum(value, opts) do
     case Keyword.fetch(opts, :enum) do

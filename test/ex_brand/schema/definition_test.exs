@@ -43,32 +43,46 @@ defmodule ExBrand.Schema.DefinitionTest do
 
     assert Definition.compiled_runtime_schema?(compiled)
 
-    assert {:compiled, :map, compiled_fields, [tolerant: false]} = compiled
+    assert {:compiled, :map, compiled_fields, opts} = compiled
+    assert opts[:tolerant] == false
+    assert Definition.compiled_runtime_metadata(opts)
 
     assert %{
-             schema: {:compiled, :terminal, {:brand, Types.UserID}, []},
+             schema: {:compiled, :terminal, {:brand, Types.UserID}, user_id_opts},
              lookup: [:user_id, "user_id"]
            } =
              compiled_fields.user_id
 
+    assert Definition.compiled_runtime_metadata(user_id_opts)
+
     assert %{
-             schema: {:compiled, :terminal, {:brand, Types.Email}, [field: "contactEmail"]},
+             schema: {:compiled, :terminal, {:brand, Types.Email}, contact_email_opts},
              lookup: ["contactEmail", {:existing_atom_binary, "contactEmail"}]
            } =
              compiled_fields.contact_email
 
+    assert contact_email_opts[:field] == "contactEmail"
+    assert Definition.compiled_runtime_metadata(contact_email_opts)
+
     assert %{
-             schema: {:compiled, :terminal, {:schema, AddressSchema}, [optional: true]},
+             schema: {:compiled, :terminal, {:schema, AddressSchema}, profile_opts},
              lookup: [:profile, "profile"]
            } =
              compiled_fields.profile
 
+    assert profile_opts[:optional] == true
+    assert Definition.compiled_runtime_metadata(profile_opts)
+
     assert %{
              schema:
-               {:compiled, :list, {:compiled, :terminal, {:base, :string}, [min_length: 2]},
-                [min_items: 1]},
+               {:compiled, :list, {:compiled, :terminal, {:base, :string}, item_opts}, list_opts},
              lookup: [:tags, "tags"]
            } = compiled_fields.tags
+
+    assert item_opts[:min_length] == 2
+    assert list_opts[:min_items] == 1
+    assert Definition.compiled_runtime_metadata(item_opts)
+    assert Definition.compiled_runtime_metadata(list_opts)
   end
 
   test "normalize_field_opts/1 rejects unsupported field options" do
