@@ -60,6 +60,15 @@ defmodule ExBrand.BaseTest do
     assert Base.validate("abc", {PrefixedString, prefix: "usr_"}) == {:error, :invalid_type}
   end
 
+  test "validate_normalized/2 validates already normalized base definitions" do
+    assert Base.validate_normalized(:integer, 1) == :ok
+    assert Base.validate_normalized(:integer, "1") == {:error, :invalid_type}
+    assert Base.validate_normalized({PrefixedString, prefix: "usr_"}, "usr_123") == :ok
+
+    assert Base.validate_normalized({PrefixedString, prefix: "usr_"}, "abc") ==
+             {:error, :invalid_type}
+  end
+
   test "ecto_type!/1 returns configured ecto types" do
     assert Base.ecto_type!(:integer) == :integer
     assert Base.ecto_type!(:binary) == :binary

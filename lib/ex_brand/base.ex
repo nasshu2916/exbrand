@@ -52,17 +52,23 @@ defmodule ExBrand.Base do
   """
   @spec validate(term(), spec()) :: :ok | {:error, term()}
   def validate(value, base) do
-    case normalize!(base) do
-      :integer when is_integer(value) -> :ok
-      :binary when is_binary(value) -> :ok
-      :string when is_binary(value) -> :ok
-      :integer -> {:error, :invalid_type}
-      :binary -> {:error, :invalid_type}
-      :string -> {:error, :invalid_type}
-      module when is_atom(module) -> module.validate(value, [])
-      {module, opts} -> module.validate(value, opts)
-    end
+    base
+    |> normalize!()
+    |> validate_normalized(value)
   end
+
+  @doc """
+  正規化済み base type に対する検証を行う。
+  """
+  @spec validate_normalized(spec(), term()) :: :ok | {:error, term()}
+  def validate_normalized(:integer, value) when is_integer(value), do: :ok
+  def validate_normalized(:binary, value) when is_binary(value), do: :ok
+  def validate_normalized(:string, value) when is_binary(value), do: :ok
+  def validate_normalized(:integer, _value), do: {:error, :invalid_type}
+  def validate_normalized(:binary, _value), do: {:error, :invalid_type}
+  def validate_normalized(:string, _value), do: {:error, :invalid_type}
+  def validate_normalized(module, value) when is_atom(module), do: module.validate(value, [])
+  def validate_normalized({module, opts}, value), do: module.validate(value, opts)
 
   @doc """
   Ecto integration で使う type を返す。

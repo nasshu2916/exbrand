@@ -13,8 +13,10 @@ defmodule ExBrand.Validator do
   @spec validate(term(), ExBrand.Base.spec(), (term() -> term()) | nil, term() | nil) ::
           {:ok, term()} | {:error, term()}
   def validate(value, base, validator, error) do
-    with :ok <- validate_base(value, base) do
-      validate_custom(value, base, validator, error)
+    normalized_base = Base.normalize!(base)
+
+    with :ok <- validate_base_normalized(value, normalized_base) do
+      validate_custom(value, normalized_base, validator, error)
     end
   end
 
@@ -22,7 +24,11 @@ defmodule ExBrand.Validator do
   raw 値が指定した base type に適合するかを検証する。
   """
   @spec validate_base(term(), ExBrand.Base.spec()) :: :ok | {:error, term()}
-  def validate_base(value, base), do: Base.validate(value, base)
+  def validate_base(value, base) do
+    base
+    |> Base.normalize!()
+    |> validate_base_normalized(value)
+  end
 
   @doc """
   custom validator を適用し、必要なら正規化後の raw 値を返す。
@@ -48,12 +54,11 @@ defmodule ExBrand.Validator do
   def validate_schema_base(_value, :null), do: {:error, :invalid_type}
 
   def validate_schema_base(value, base) do
-    case Base.normalize!(base) do
-      normalized_base ->
-        case validate(value, normalized_base, nil, nil) do
-          {:ok, normalized_value} -> {:ok, normalized_value}
-          {:error, reason} -> {:error, reason}
-        end
+    normalized_base = Base.normalize!(base)
+
+    case validate_base_normalized(value, normalized_base) do
+      :ok -> {:ok, value}
+      {:error, reason} -> {:error, reason}
     end
   rescue
     ArgumentError -> {:error, :invalid_schema}
@@ -90,9 +95,11 @@ defmodule ExBrand.Validator do
   end
 
   defp validate_normalized(value, base) do
-    case validate_base(value, base) do
+    case validate_base_normalized(value, base) do
       :ok -> {:ok, value}
       {:error, :invalid_type} -> {:error, {:invalid_normalized_type, value}}
     end
   end
+
+  defp validate_base_normalized(value, base), do: Base.validate_normalized(base, value)
 end
