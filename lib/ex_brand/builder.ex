@@ -61,18 +61,20 @@ defmodule ExBrand.Builder do
     end
   end
 
-  defp build_brand_ast_parts(%{
-         module: module,
-         raw_type: raw_type,
-         derive: derive,
-         base: base,
-         error: error,
-         name: name,
-         signature_verification: signature_verification,
-         secret: secret,
-         validate: validate,
-         generator: generator
-       }) do
+  defp build_brand_ast_parts(
+         %{
+           module: module,
+           raw_type: raw_type,
+           derive: derive,
+           base: base,
+           error: error,
+           name: name,
+           signature_verification: signature_verification,
+           secret: secret,
+           validate: validate,
+           generator: generator
+         } = ast_context
+       ) do
     [
       build_brand_moduledoc_ast(module),
       build_derive_ast(derive),
@@ -80,7 +82,7 @@ defmodule ExBrand.Builder do
       build_types_ast(raw_type, signature_verification),
       build_brand_attributes_ast(base, error, name, signature_verification, secret),
       build_internal_helpers_ast(validate, generator, signature_verification),
-      build_constructor_api_ast(signature_verification),
+      build_constructor_api_ast(ast_context),
       build_brand_runtime_api_ast(),
       build_reflection_api_ast(),
       Adapter.build_module_ast(module)
@@ -148,23 +150,15 @@ defmodule ExBrand.Builder do
     end
   end
 
-  defp build_constructor_api_ast(signature_verification) do
+  defp build_constructor_api_ast(%{
+         base: base,
+         validate: validate,
+         signature_verification: signature_verification
+       }) do
+    new_ast = build_optimized_new_ast(base, validate, signature_verification)
+
     quote do
-      @doc """
-      raw 値から brand 値を生成する。
-
-      validator が正規化値を返した場合は、その値を内部に保持する。
-      """
-      @spec new(raw()) :: {:ok, t()} | {:error, term()}
-      def new(value) do
-        case ExBrand.Validator.validate(value, @base, __validator__(), @error_reason) do
-          {:ok, normalized_value} ->
-            {:ok, unquote(build_brand_struct_ast(signature_verification))}
-
-          {:error, reason} ->
-            {:error, reason}
-        end
-      end
+      unquote(new_ast)
 
       @doc """
       `new/1` の bang 版。
@@ -211,6 +205,103 @@ defmodule ExBrand.Builder do
             raise ExBrand.Error, reason: reason, module: __MODULE__, value: value
         end
       end
+    end
+  end
+
+  # Optimized new/1 for builtin types without custom validator.
+  # Base type check is inlined as a guard, eliminating all runtime function calls
+  # to Validator and Base modules.
+  defp build_optimized_new_ast(base, nil, signature_verification)
+       when base in [:integer, :string, :binary] do
+    guard = builtin_guard_ast(base)
+    struct_ast = build_brand_struct_from_value_ast(signature_verification)
+
+    quote do
+      @doc """
+      raw 値から brand 値を生成する。
+
+      validator が正規化値を返した場合は、その値を内部に保持する。
+      """
+      @spec new(raw()) :: {:ok, t()} | {:error, term()}
+      def new(value) when unquote(guard) do
+        {:ok, unquote(struct_ast)}
+      end
+
+      def new(_value), do: {:error, :invalid_type}
+    end
+  end
+
+  # Optimized new/1 for builtin types with custom validator.
+  # Base type check is inlined as a guard, skipping Base.normalize!/1.
+  # Only validate_custom is called at runtime.
+  defp build_optimized_new_ast(base, _validate, signature_verification)
+       when base in [:integer, :string, :binary] do
+    guard = builtin_guard_ast(base)
+    struct_ast = build_brand_struct_ast(signature_verification)
+
+    quote do
+      @doc """
+      raw 値から brand 値を生成する。
+
+      validator が正規化値を返した場合は、その値を内部に保持する。
+      """
+      @spec new(raw()) :: {:ok, t()} | {:error, term()}
+      def new(value) when unquote(guard) do
+        case ExBrand.Validator.validate_custom(
+               value,
+               unquote(base),
+               __validator__(),
+               @error_reason
+             ) do
+          {:ok, normalized_value} ->
+            {:ok, unquote(struct_ast)}
+
+          {:error, reason} ->
+            {:error, reason}
+        end
+      end
+
+      def new(_value), do: {:error, :invalid_type}
+    end
+  end
+
+  # Fallback new/1 for custom base types.
+  # Uses full runtime validation path.
+  defp build_optimized_new_ast(_base, _validate, signature_verification) do
+    struct_ast = build_brand_struct_ast(signature_verification)
+
+    quote do
+      @doc """
+      raw 値から brand 値を生成する。
+
+      validator が正規化値を返した場合は、その値を内部に保持する。
+      """
+      @spec new(raw()) :: {:ok, t()} | {:error, term()}
+      def new(value) do
+        case ExBrand.Validator.validate(value, @base, __validator__(), @error_reason) do
+          {:ok, normalized_value} ->
+            {:ok, unquote(struct_ast)}
+
+          {:error, reason} ->
+            {:error, reason}
+        end
+      end
+    end
+  end
+
+  defp builtin_guard_ast(:integer), do: quote(do: is_integer(value))
+  defp builtin_guard_ast(:string), do: quote(do: is_binary(value))
+  defp builtin_guard_ast(:binary), do: quote(do: is_binary(value))
+
+  defp build_brand_struct_from_value_ast(true) do
+    quote do
+      %__MODULE__{__value__: value, __signature__: __sign__(value)}
+    end
+  end
+
+  defp build_brand_struct_from_value_ast(false) do
+    quote do
+      %__MODULE__{__value__: value}
     end
   end
 
