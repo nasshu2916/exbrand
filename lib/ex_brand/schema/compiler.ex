@@ -4,7 +4,14 @@ defmodule ExBrand.Schema.Compiler do
   alias ExBrand.Schema.Definition
 
   @spec build_field_ast!({atom(), term(), keyword()}) :: Macro.t()
-  def build_field_ast!({name, schema, opts}) do
+  def build_field_ast!(field_definition) do
+    field_definition
+    |> build_field_definition!()
+    |> build_field_ast()
+  end
+
+  @spec build_field_definition!({atom(), term(), keyword()}) :: {atom(), term()}
+  def build_field_definition!({name, schema, opts}) do
     unless is_atom(name) do
       raise ArgumentError, "field name must be an atom, got: #{inspect(name)}"
     end
@@ -16,6 +23,11 @@ defmodule ExBrand.Schema.Compiler do
     merged_schema = Definition.merge_field_opts(schema, opts)
     validate_schema_definition!(merged_schema, "field #{inspect(name)}")
 
+    {name, merged_schema}
+  end
+
+  @spec build_field_ast({atom(), term()}) :: Macro.t()
+  def build_field_ast({name, merged_schema}) do
     quote do
       {unquote(name), unquote(Macro.escape(merged_schema))}
     end

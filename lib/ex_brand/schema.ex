@@ -58,11 +58,14 @@ defmodule ExBrand.Schema do
   defmacro __before_compile__(env) do
     tolerant = Module.get_attribute(env.module, :ex_brand_schema_tolerant)
 
-    fields_ast =
+    field_definitions =
       env.module
       |> Module.get_attribute(:ex_brand_schema_fields)
       |> Enum.reverse()
-      |> Enum.map(&Compiler.build_field_ast!/1)
+      |> Enum.map(&Compiler.build_field_definition!/1)
+
+    fields_ast =
+      Enum.map(field_definitions, &Compiler.build_field_ast/1)
 
     schema_ast =
       quote do
@@ -72,6 +75,12 @@ defmodule ExBrand.Schema do
         }
       end
 
+    compiled_schema =
+      Definition.compile_runtime_schema!({
+        Map.new(field_definitions),
+        tolerant: tolerant
+      })
+
     quote do
       @doc """
       schema 定義を返す。
@@ -79,17 +88,21 @@ defmodule ExBrand.Schema do
       @spec __schema__() :: ExBrand.Schema.schema_definition()
       def __schema__, do: unquote(schema_ast)
 
+      @doc false
+      def __compiled_schema__, do: unquote(Macro.escape(compiled_schema))
+
       @doc """
       入力値を schema 定義に従って検証し、正規化済みの値を返す。
       """
       @spec validate(term()) :: {:ok, term()} | {:error, term()}
-      def validate(params), do: ExBrand.Schema.validate(params, __schema__())
+      def validate(params), do: ExBrand.Schema.validate(params, __compiled_schema__())
 
       @doc """
       `validate/1` の bang 版。
       """
       @spec validate!(term()) :: term()
-      def validate!(params), do: ExBrand.Schema.validate!(params, __MODULE__, __schema__())
+      def validate!(params),
+        do: ExBrand.Schema.validate!(params, __MODULE__, __compiled_schema__())
 
       @doc """
       入力値が schema に適合するかを返す。

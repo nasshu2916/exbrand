@@ -7,6 +7,20 @@ defmodule ExBrand.Schema.Runtime do
   @spec validate(term(), term()) :: {:ok, term()} | {:error, term()}
   def validate(value, schema), do: validate_schema(value, schema)
 
+  defp validate_schema(value, {:compiled, kind, data, opts}) do
+    if Keyword.get(opts, :nullable, false) and is_nil(value) do
+      {:ok, nil}
+    else
+      with {:ok, typed_value} <- validate_compiled_typed_value(value, kind, data, opts),
+           {:ok, constrained_value} <-
+             apply_constraints(typed_value, compiled_base_schema(kind, data), opts) do
+        {:ok, constrained_value}
+      else
+        {:error, reason} -> {:error, wrap_error(reason, opts)}
+      end
+    end
+  end
+
   defp validate_schema(value, schema) do
     {base_schema, opts} = Definition.split_schema_opts(schema)
 
@@ -19,6 +33,20 @@ defmodule ExBrand.Schema.Runtime do
       else
         {:error, reason} -> {:error, wrap_error(reason, opts)}
       end
+    end
+  end
+
+  defp validate_compiled_typed_value(value, :map, schema_fields, opts),
+    do: validate_map(value, schema_fields, opts)
+
+  defp validate_compiled_typed_value(value, :list, item_schema, opts),
+    do: validate_list(value, item_schema, opts)
+
+  defp validate_compiled_typed_value(value, :terminal, resolved_schema, _opts) do
+    case resolved_schema do
+      {:brand, module} -> module.cast(value)
+      {:schema, module} -> module.validate(value)
+      {:base, base} -> Validator.validate_schema_base(value, base)
     end
   end
 
@@ -43,16 +71,13 @@ defmodule ExBrand.Schema.Runtime do
     tolerant = Keyword.get(opts, :tolerant, false)
 
     {normalized, errors, consumed_keys} =
-      Enum.reduce(schema_fields, {%{}, %{}, MapSet.new()}, fn {name, field_schema},
-                                                              {normalized, errors, consumed_keys} ->
-        {field_schema_base, field_opts} = Definition.split_schema_opts(field_schema)
+      Enum.reduce(schema_fields, {%{}, %{}, MapSet.new()}, fn {name, field_schema}, acc ->
+        {normalized, errors, consumed_keys} = acc
+        field_opts = field_opts(field_schema)
 
         case fetch_field_value(value, name, field_opts) do
           {:ok, field_value, used_key} ->
-            case validate_schema(
-                   field_value,
-                   {field_schema_base, Keyword.delete(field_opts, :field)}
-                 ) do
+            case validate_schema(field_value, field_schema) do
               {:ok, normalized_value} ->
                 {Map.put(normalized, name, normalized_value), errors,
                  MapSet.put(consumed_keys, used_key)}
@@ -64,7 +89,7 @@ defmodule ExBrand.Schema.Runtime do
           :missing ->
             handle_missing_field(
               name,
-              field_schema_base,
+              field_schema_without_opts(field_schema),
               field_opts,
               normalized,
               errors,
@@ -171,6 +196,18 @@ defmodule ExBrand.Schema.Runtime do
     ArgumentError -> false
   end
 
+  defp field_opts({:compiled, _kind, _data, opts}), do: opts
+  defp field_opts(schema), do: elem(Definition.split_schema_opts(schema), 1)
+
+  defp field_schema_without_opts({:compiled, kind, data, _opts}), do: {:compiled, kind, data, []}
+  defp field_schema_without_opts(schema), do: elem(Definition.split_schema_opts(schema), 0)
+
+  defp compiled_base_schema(:map, schema_fields), do: {:compiled, :map, schema_fields, []}
+  defp compiled_base_schema(:list, item_schema), do: {:compiled, :list, item_schema, []}
+
+  defp compiled_base_schema(:terminal, resolved_schema),
+    do: {:compiled, :terminal, resolved_schema, []}
+
   defp apply_constraints(value, base_schema, opts) do
     constraint_input = constraint_input(base_schema, value)
 
@@ -268,6 +305,11 @@ defmodule ExBrand.Schema.Runtime do
       &validate_schema(&1, base_schema)
     )
   end
+
+  defp constraint_input({:compiled, :terminal, {:brand, _module}, _opts}, value),
+    do: ExBrand.unwrap!(value)
+
+  defp constraint_input({:compiled, _kind, _data, _opts}, value), do: value
 
   defp constraint_input(schema, value) do
     case Definition.resolve_terminal_schema(schema) do

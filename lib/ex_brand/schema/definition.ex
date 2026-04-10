@@ -61,6 +61,48 @@ defmodule ExBrand.Schema.Definition do
   def split_schema_opts({schema, opts}) when is_list(opts), do: {schema, opts}
   def split_schema_opts(schema), do: {schema, []}
 
+  @type runtime_node_kind() :: :list | :map | :terminal
+  @type runtime_terminal() :: {:base, term()} | {:brand, module()} | {:schema, module()}
+  @type runtime_node() ::
+          {:compiled, runtime_node_kind(), runtime_terminal() | runtime_node() | map(), keyword()}
+
+  @spec compile_runtime_schema!(term()) :: runtime_node()
+  def compile_runtime_schema!(schema) do
+    {base_schema, opts} = split_schema_opts(schema)
+
+    cond do
+      is_map(base_schema) ->
+        compiled_fields =
+          Map.new(base_schema, fn {name, field_schema} ->
+            {name, compile_runtime_schema!(field_schema)}
+          end)
+
+        {:compiled, :map, compiled_fields, opts}
+
+      is_list(base_schema) ->
+        case base_schema do
+          [item_schema] ->
+            {:compiled, :list, compile_runtime_schema!(item_schema), opts}
+
+          _ ->
+            raise ArgumentError, "list schema must contain exactly one item schema"
+        end
+
+      true ->
+        case resolve_terminal_schema(base_schema) do
+          {:ok, resolved_schema} -> {:compiled, :terminal, resolved_schema, opts}
+          :error -> raise ArgumentError, "invalid schema: #{inspect(schema)}"
+        end
+    end
+  end
+
+  @spec compiled_runtime_schema?(term()) :: boolean()
+  def compiled_runtime_schema?({:compiled, kind, _data, opts})
+      when kind in [:list, :map, :terminal] and is_list(opts),
+      do: true
+
+  def compiled_runtime_schema?(_schema), do: false
+
   @spec merge_field_opts(term(), keyword()) :: {term(), keyword()}
   def merge_field_opts(schema, opts) do
     {base_schema, schema_opts} = split_schema_opts(schema)

@@ -1,6 +1,7 @@
 defmodule ExBrand.SchemaTest do
   use ExUnit.Case, async: true
 
+  alias ExBrand.Schema.Definition
   alias ExBrand.TestSupport.Fixtures.{AddressSchema, TolerantUserSchema, Types, UserSchema}
 
   test "schema validates params and normalizes brand fields" do
@@ -87,6 +88,24 @@ defmodule ExBrand.SchemaTest do
   test "schema validates nested schema directly" do
     assert {:ok, %{city: "Osaka", zip: "53000"}} =
              AddressSchema.validate(%{city: "Osaka", zip: "53000"})
+  end
+
+  test "module schema keeps raw definition and also exposes compiled schema" do
+    assert UserSchema.__schema__() ==
+             {%{
+                user_id: {Types.UserID, []},
+                email: {Types.Email, []},
+                age: {:integer, minimum: 18, error: :too_young},
+                nickname: {:string, optional: true},
+                status: {:string, default: "active"},
+                contact_email: {Types.Email, field: "contactEmail"},
+                address: {AddressSchema, []},
+                tags:
+                  {[{:string, min_length: 2}], min_items: 1, unique_items: true, optional: true},
+                published_at: {:string, format: :datetime, optional: true}
+              }, tolerant: false}
+
+    assert Definition.compiled_runtime_schema?(UserSchema.__compiled_schema__())
   end
 
   test "schema supports inline map schema" do

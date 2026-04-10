@@ -29,6 +29,29 @@ defmodule ExBrand.Schema.DefinitionTest do
              {:string, [min_length: 2, optional: true, field: "name"]}
   end
 
+  test "compile_runtime_schema!/1 resolves runtime nodes ahead of validation" do
+    compiled =
+      Definition.compile_runtime_schema!({
+        %{
+          user_id: Types.UserID,
+          profile: {AddressSchema, optional: true},
+          tags: {[{:string, min_length: 2}], min_items: 1}
+        },
+        tolerant: false
+      })
+
+    assert Definition.compiled_runtime_schema?(compiled)
+
+    assert {:compiled, :map, compiled_fields, [tolerant: false]} = compiled
+    assert {:compiled, :terminal, {:brand, Types.UserID}, []} = compiled_fields.user_id
+
+    assert {:compiled, :terminal, {:schema, AddressSchema}, [optional: true]} =
+             compiled_fields.profile
+
+    assert {:compiled, :list, {:compiled, :terminal, {:base, :string}, [min_length: 2]},
+            [min_items: 1]} = compiled_fields.tags
+  end
+
   test "normalize_field_opts/1 rejects unsupported field options" do
     assert_raise ArgumentError, ~r/unsupported field option: :unknown/, fn ->
       Definition.normalize_field_opts(unknown: true)
