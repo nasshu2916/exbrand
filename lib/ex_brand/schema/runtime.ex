@@ -98,27 +98,16 @@ defmodule ExBrand.Schema.Runtime do
            {schema, field_opts, field_lookup, schema_without_opts} =
              field_metadata(field_schema, name)
 
-           case fetch_field_value(value, field_lookup) do
-             {:ok, field_value, used_key} ->
-               case validate_schema(field_value, schema) do
-                 {:ok, normalized_value} ->
-                   {:cont,
-                    {Map.put(normalized, name, normalized_value),
-                     MapSet.put(consumed_keys, used_key)}}
-
-                 {:error, reason} ->
-                   {:halt, {:error, %{name => reason}}}
-               end
-
-             :missing ->
-               case resolve_missing_field(schema_without_opts, field_opts) do
-                 {:ok, default_or_nil} ->
-                   {:cont, {Map.put(normalized, name, default_or_nil), consumed_keys}}
-
-                 {:error, reason} ->
-                   {:halt, {:error, %{name => reason}}}
-               end
-           end
+           validate_strict_field(
+             value,
+             name,
+             schema,
+             field_lookup,
+             schema_without_opts,
+             field_opts,
+             normalized,
+             consumed_keys
+           )
          end) do
       {:error, errors} ->
         {:error, errors}
@@ -162,6 +151,72 @@ defmodule ExBrand.Schema.Runtime do
 
     errors = append_extra_field_errors(value, consumed_keys, errors)
     maybe_error_or_ok(errors, normalized)
+  end
+
+  defp validate_strict_field(
+         value,
+         name,
+         schema,
+         field_lookup,
+         schema_without_opts,
+         field_opts,
+         normalized,
+         consumed_keys
+       ) do
+    case fetch_field_value(value, field_lookup) do
+      {:ok, field_value, used_key} ->
+        validate_present_strict_field(
+          field_value,
+          schema,
+          name,
+          normalized,
+          consumed_keys,
+          used_key
+        )
+
+      :missing ->
+        validate_missing_strict_field(
+          schema_without_opts,
+          field_opts,
+          name,
+          normalized,
+          consumed_keys
+        )
+    end
+  end
+
+  defp validate_present_strict_field(
+         field_value,
+         schema,
+         name,
+         normalized,
+         consumed_keys,
+         used_key
+       ) do
+    case validate_schema(field_value, schema) do
+      {:ok, normalized_value} ->
+        {:cont,
+         {Map.put(normalized, name, normalized_value), MapSet.put(consumed_keys, used_key)}}
+
+      {:error, reason} ->
+        {:halt, {:error, %{name => reason}}}
+    end
+  end
+
+  defp validate_missing_strict_field(
+         schema_without_opts,
+         field_opts,
+         name,
+         normalized,
+         consumed_keys
+       ) do
+    case resolve_missing_field(schema_without_opts, field_opts) do
+      {:ok, default_or_nil} ->
+        {:cont, {Map.put(normalized, name, default_or_nil), consumed_keys}}
+
+      {:error, reason} ->
+        {:halt, {:error, %{name => reason}}}
+    end
   end
 
   defp validate_map_relaxed(value, schema_fields, true) do
@@ -341,7 +396,8 @@ defmodule ExBrand.Schema.Runtime do
     }
   end
 
-  defp schema_fail_fast_enabled? do
+  @spec schema_fail_fast_enabled?() :: boolean()
+  def schema_fail_fast_enabled? do
     case Application.get_env(:ex_brand, :schema_fail_fast, false) do
       true -> true
       false -> false
@@ -377,9 +433,11 @@ defmodule ExBrand.Schema.Runtime do
     end
   end
 
-  defp fetch_compiled_field_value(_params, []), do: :missing
+  @spec fetch_compiled_field_value(map(), [Definition.runtime_lookup_entry()]) ::
+          {:ok, term(), atom() | String.t()} | :missing
+  def fetch_compiled_field_value(_params, []), do: :missing
 
-  defp fetch_compiled_field_value(params, [key | rest]) when is_atom(key) or is_binary(key) do
+  def fetch_compiled_field_value(params, [key | rest]) when is_atom(key) or is_binary(key) do
     if Map.has_key?(params, key) do
       {:ok, Map.fetch!(params, key), key}
     else
@@ -387,7 +445,7 @@ defmodule ExBrand.Schema.Runtime do
     end
   end
 
-  defp fetch_compiled_field_value(params, [{:existing_atom_binary, key} | rest]) do
+  def fetch_compiled_field_value(params, [{:existing_atom_binary, key} | rest]) do
     with true <- atomizable_key?(key),
          atom_key <- String.to_atom(key),
          true <- Map.has_key?(params, atom_key) do
@@ -459,10 +517,14 @@ defmodule ExBrand.Schema.Runtime do
   defp maybe_error_or_ok(nil, ok_value), do: {:ok, ok_value}
   defp maybe_error_or_ok(errors, _ok_value), do: {:error, errors}
 
+  @spec accumulate_error(nil | map(), term(), term()) :: map()
+  def accumulate_error(errors, key, reason), do: put_error(errors, key, reason)
+
   defp put_error(nil, key, reason), do: %{key => reason}
   defp put_error(errors, key, reason), do: Map.put(errors, key, reason)
 
-  defp resolve_missing_field(field_schema, field_opts) do
+  @spec resolve_missing_field(term(), keyword()) :: {:ok, term()} | {:error, term()}
+  def resolve_missing_field(field_schema, field_opts) do
     cond do
       Keyword.has_key?(field_opts, :default) ->
         validate_schema(Keyword.fetch!(field_opts, :default), field_schema)
@@ -475,7 +537,8 @@ defmodule ExBrand.Schema.Runtime do
     end
   end
 
-  defp extra_fields(value, consumed_keys) do
+  @spec extra_fields(map(), MapSet.t()) :: [term()]
+  def extra_fields(value, consumed_keys) do
     value
     |> Map.keys()
     |> Enum.reject(&MapSet.member?(consumed_keys, &1))
