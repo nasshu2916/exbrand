@@ -23,7 +23,15 @@ defmodule ExBrand.Schema.Definition do
     :unique_items,
     :validate
   ]
-  @generic_constraint_keys [:default, :enum, :error, :nullable, :optional, :field, :validate]
+  @generic_constraint_keys [
+    :default,
+    :enum,
+    :error,
+    :nullable,
+    :optional,
+    :field,
+    :validate
+  ]
   @map_constraint_keys [:allow_extra_fields, :tolerant | @generic_constraint_keys]
   @list_constraint_keys [:min_items, :max_items, :unique_items | @generic_constraint_keys]
   @string_constraint_keys [:format, :min_length, :max_length | @generic_constraint_keys]
@@ -362,7 +370,14 @@ defmodule ExBrand.Schema.Definition do
   @typep scalar_profile ::
            :any | :binary | :boolean | :custom_base | :integer | :null | :number | :string
   @typep map_constraint_key ::
-           :default | :enum | :error | :field | :nullable | :optional | :tolerant | :validate
+           :default
+           | :enum
+           | :error
+           | :field
+           | :nullable
+           | :optional
+           | :tolerant
+           | :validate
   @typep list_constraint_key ::
            :default
            | :enum

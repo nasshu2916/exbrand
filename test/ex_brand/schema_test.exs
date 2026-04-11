@@ -1,5 +1,5 @@
 defmodule ExBrand.SchemaTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias ExBrand.Schema.Definition
   alias ExBrand.TestSupport.Fixtures.{AddressSchema, TolerantUserSchema, Types, UserSchema}
@@ -217,6 +217,16 @@ defmodule ExBrand.SchemaTest do
                  end
   end
 
+  test "use ExBrand.Schema rejects unsupported options" do
+    assert_raise ArgumentError, ~r/unsupported use ExBrand.Schema options: :fail_fast/, fn ->
+      Code.compile_string("""
+      defmodule InvalidUseSchemaOption do
+        use ExBrand.Schema, fail_fast: true
+      end
+      """)
+    end
+  end
+
   test "validate! raises on invalid params" do
     assert_raise ArgumentError, ~r/invalid schema value/, fn ->
       UserSchema.validate!(%{user_id: "1"})
@@ -234,4 +244,30 @@ defmodule ExBrand.SchemaTest do
 
     refute UserSchema.valid?(%{user_id: "1"})
   end
+
+  test "schema fail_fast is controlled by application config, not schema options" do
+    previous_value = Application.get_env(:ex_brand, :schema_fail_fast)
+    on_exit(fn -> restore_schema_fail_fast(previous_value) end)
+
+    Application.put_env(:ex_brand, :schema_fail_fast, true)
+    assert {:error, errors} = UserSchema.validate(%{age: 10, email: "invalid"})
+    assert map_size(errors) == 1
+
+    Application.put_env(:ex_brand, :schema_fail_fast, false)
+
+    assert {:error, errors} = UserSchema.validate(%{age: 10, email: "invalid"})
+
+    assert errors == %{
+             user_id: :required,
+             email: :invalid_email,
+             age: :too_young,
+             contact_email: :required,
+             address: :required
+           }
+  end
+
+  defp restore_schema_fail_fast(nil), do: Application.delete_env(:ex_brand, :schema_fail_fast)
+
+  defp restore_schema_fail_fast(value),
+    do: Application.put_env(:ex_brand, :schema_fail_fast, value)
 end

@@ -28,6 +28,7 @@ defmodule ExBrand.Schema do
   Schema DSL を導入する。
   """
   defmacro __using__(opts \\ []) do
+    validate_use_opts!(opts)
     tolerant = Keyword.get(opts, :tolerant, false)
 
     quote bind_quoted: [tolerant: tolerant] do
@@ -36,6 +37,23 @@ defmodule ExBrand.Schema do
       Module.register_attribute(__MODULE__, :ex_brand_schema_fields, accumulate: true)
       Module.put_attribute(__MODULE__, :ex_brand_schema_tolerant, tolerant)
       @before_compile ExBrand.Schema
+    end
+  end
+
+  defp validate_use_opts!(opts) when is_list(opts) do
+    invalid_keys =
+      opts
+      |> Keyword.keys()
+      |> Enum.uniq()
+      |> Enum.reject(&(&1 in [:tolerant]))
+
+    case invalid_keys do
+      [] ->
+        :ok
+
+      keys ->
+        joined = Enum.map_join(keys, ", ", &inspect/1)
+        raise ArgumentError, "unsupported use ExBrand.Schema options: #{joined}"
     end
   end
 
@@ -81,6 +99,8 @@ defmodule ExBrand.Schema do
         tolerant: tolerant
       })
 
+    {:compiled, compiled_kind, compiled_data, compiled_opts} = compiled_schema
+
     quote do
       @doc """
       schema 定義を返す。
@@ -95,7 +115,14 @@ defmodule ExBrand.Schema do
       入力値を schema 定義に従って検証し、正規化済みの値を返す。
       """
       @spec validate(term()) :: {:ok, term()} | {:error, term()}
-      def validate(params), do: ExBrand.Schema.validate(params, __compiled_schema__())
+      def validate(params) do
+        Runtime.validate_compiled_root(
+          params,
+          unquote(compiled_kind),
+          unquote(Macro.escape(compiled_data)),
+          unquote(Macro.escape(compiled_opts))
+        )
+      end
 
       @doc """
       `validate/1` の bang 版。

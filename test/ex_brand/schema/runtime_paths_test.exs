@@ -1,5 +1,5 @@
 defmodule ExBrand.Schema.RuntimePathsTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias ExBrand.Schema
   alias ExBrand.TestSupport.Fixtures.{AddressSchema, Types}
@@ -60,6 +60,59 @@ defmodule ExBrand.Schema.RuntimePathsTest do
     assert Schema.validate(%{email: "a@example.com", unknown: "value"}, schema) ==
              {:ok, %{email: "a@example.com"}}
   end
+
+  test "fail_fast stops map validation at the first field error" do
+    previous_value = Application.get_env(:ex_brand, :schema_fail_fast)
+    on_exit(fn -> restore_schema_fail_fast(previous_value) end)
+    Application.put_env(:ex_brand, :schema_fail_fast, true)
+
+    schema = %{age: {:integer, minimum: 18}, email: {:string, format: :email}}
+
+    assert {:error, errors} = Schema.validate(%{age: 10, email: "invalid"}, schema)
+    assert map_size(errors) == 1
+
+    assert Enum.any?(errors, fn {_key, reason} ->
+             reason in [:less_than_minimum, :invalid_format]
+           end)
+  end
+
+  test "fail_fast false accumulates map field errors" do
+    previous_value = Application.get_env(:ex_brand, :schema_fail_fast)
+    on_exit(fn -> restore_schema_fail_fast(previous_value) end)
+    Application.put_env(:ex_brand, :schema_fail_fast, false)
+
+    schema = %{age: {:integer, minimum: 18}, email: {:string, format: :email}}
+
+    assert Schema.validate(%{age: 10, email: "invalid"}, schema) ==
+             {:error, %{age: :less_than_minimum, email: :invalid_format}}
+  end
+
+  test "fail_fast stops list validation at the first item error before list constraints" do
+    previous_value = Application.get_env(:ex_brand, :schema_fail_fast)
+    on_exit(fn -> restore_schema_fail_fast(previous_value) end)
+    Application.put_env(:ex_brand, :schema_fail_fast, true)
+
+    schema = {[{:integer, minimum: 1}], min_items: 3, unique_items: true}
+
+    assert Schema.validate([0, 0], schema) == {:error, %{0 => :less_than_minimum}}
+  end
+
+  test "fail_fast false accumulates list item and list-level errors" do
+    previous_value = Application.get_env(:ex_brand, :schema_fail_fast)
+    on_exit(fn -> restore_schema_fail_fast(previous_value) end)
+    Application.put_env(:ex_brand, :schema_fail_fast, false)
+
+    schema = {[{:integer, minimum: 1}], min_items: 3, unique_items: true}
+
+    assert Schema.validate([0, 0], schema) ==
+             {:error,
+              %{0 => :less_than_minimum, 1 => :less_than_minimum, :__self__ => :items_not_unique}}
+  end
+
+  defp restore_schema_fail_fast(nil), do: Application.delete_env(:ex_brand, :schema_fail_fast)
+
+  defp restore_schema_fail_fast(value),
+    do: Application.put_env(:ex_brand, :schema_fail_fast, value)
 
   test "custom runtime validator can normalize nested values and wrap errors" do
     schema =

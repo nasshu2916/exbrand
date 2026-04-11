@@ -7,6 +7,11 @@ defmodule ExBrand.Schema.Runtime do
   @spec validate(term(), term()) :: {:ok, term()} | {:error, term()}
   def validate(value, schema), do: validate_schema(value, schema)
 
+  @spec validate_compiled_root(term(), :map | :list | :terminal, term(), keyword()) ::
+          {:ok, term()} | {:error, term()}
+  def validate_compiled_root(value, kind, data, opts),
+    do: validate_compiled(value, kind, data, opts)
+
   @spec validate_compiled(term(), :map | :list | :terminal, term(), keyword()) ::
           {:ok, term()} | {:error, term()}
   def validate_compiled(value, kind, data, opts) do
@@ -76,20 +81,60 @@ defmodule ExBrand.Schema.Runtime do
   end
 
   defp validate_map(value, schema_fields, opts) when is_map(value) do
+    fail_fast = fail_fast?(opts)
+
     if reject_extra_fields?(opts) do
-      validate_map_strict(value, schema_fields)
+      validate_map_strict(value, schema_fields, fail_fast)
     else
-      validate_map_relaxed(value, schema_fields)
+      validate_map_relaxed(value, schema_fields, fail_fast)
     end
   end
 
   defp validate_map(_value, _schema_fields, _opts), do: {:error, :invalid_type}
 
-  defp validate_map_strict(value, schema_fields) do
-    {normalized, errors, consumed_keys} =
-      Enum.reduce(schema_fields, {%{}, %{}, MapSet.new()}, fn {name, field_schema}, acc ->
-        {normalized, errors, consumed_keys} = acc
+  defp validate_map_strict(value, schema_fields, true) do
+    case Enum.reduce_while(schema_fields, {%{}, MapSet.new()}, fn {name, field_schema},
+                                                                  {normalized, consumed_keys} ->
+           {schema, field_opts, field_lookup, schema_without_opts} =
+             field_metadata(field_schema, name)
 
+           case fetch_field_value(value, field_lookup) do
+             {:ok, field_value, used_key} ->
+               case validate_schema(field_value, schema) do
+                 {:ok, normalized_value} ->
+                   {:cont,
+                    {Map.put(normalized, name, normalized_value),
+                     MapSet.put(consumed_keys, used_key)}}
+
+                 {:error, reason} ->
+                   {:halt, {:error, %{name => reason}}}
+               end
+
+             :missing ->
+               case resolve_missing_field(schema_without_opts, field_opts) do
+                 {:ok, default_or_nil} ->
+                   {:cont, {Map.put(normalized, name, default_or_nil), consumed_keys}}
+
+                 {:error, reason} ->
+                   {:halt, {:error, %{name => reason}}}
+               end
+           end
+         end) do
+      {:error, errors} ->
+        {:error, errors}
+
+      {normalized, consumed_keys} ->
+        case extra_fields(value, consumed_keys) do
+          [] -> {:ok, normalized}
+          fields -> {:error, %{Definition.internal_error_key() => Enum.sort(fields)}}
+        end
+    end
+  end
+
+  defp validate_map_strict(value, schema_fields, false) do
+    {normalized, errors, consumed_keys} =
+      Enum.reduce(schema_fields, {%{}, nil, MapSet.new()}, fn {name, field_schema},
+                                                              {normalized, errors, consumed_keys} ->
         {schema, field_opts, field_lookup, schema_without_opts} =
           field_metadata(field_schema, name)
 
@@ -101,32 +146,53 @@ defmodule ExBrand.Schema.Runtime do
                  MapSet.put(consumed_keys, used_key)}
 
               {:error, reason} ->
-                {normalized, Map.put(errors, name, reason), MapSet.put(consumed_keys, used_key)}
+                {normalized, put_error(errors, name, reason), MapSet.put(consumed_keys, used_key)}
             end
 
           :missing ->
-            handle_missing_field(
-              name,
-              schema_without_opts,
-              field_opts,
-              normalized,
-              errors,
-              consumed_keys
-            )
+            case resolve_missing_field(schema_without_opts, field_opts) do
+              {:ok, default_or_nil} ->
+                {Map.put(normalized, name, default_or_nil), errors, consumed_keys}
+
+              {:error, reason} ->
+                {normalized, put_error(errors, name, reason), consumed_keys}
+            end
         end
       end)
 
     errors = append_extra_field_errors(value, consumed_keys, errors)
-
-    case map_size(errors) do
-      0 -> {:ok, normalized}
-      _ -> {:error, errors}
-    end
+    maybe_error_or_ok(errors, normalized)
   end
 
-  defp validate_map_relaxed(value, schema_fields) do
+  defp validate_map_relaxed(value, schema_fields, true) do
+    Enum.reduce_while(schema_fields, {:ok, %{}}, fn {name, field_schema}, {:ok, normalized} ->
+      {schema, field_opts, field_lookup, schema_without_opts} = field_metadata(field_schema, name)
+
+      case fetch_field_value(value, field_lookup) do
+        {:ok, field_value, _used_key} ->
+          case validate_schema(field_value, schema) do
+            {:ok, normalized_value} ->
+              {:cont, {:ok, Map.put(normalized, name, normalized_value)}}
+
+            {:error, reason} ->
+              {:halt, {:error, %{name => reason}}}
+          end
+
+        :missing ->
+          case resolve_missing_field(schema_without_opts, field_opts) do
+            {:ok, default_or_nil} ->
+              {:cont, {:ok, Map.put(normalized, name, default_or_nil)}}
+
+            {:error, reason} ->
+              {:halt, {:error, %{name => reason}}}
+          end
+      end
+    end)
+  end
+
+  defp validate_map_relaxed(value, schema_fields, false) do
     {normalized, errors} =
-      Enum.reduce(schema_fields, {%{}, %{}}, fn {name, field_schema}, {normalized, errors} ->
+      Enum.reduce(schema_fields, {%{}, nil}, fn {name, field_schema}, {normalized, errors} ->
         {schema, field_opts, field_lookup, schema_without_opts} =
           field_metadata(field_schema, name)
 
@@ -137,38 +203,53 @@ defmodule ExBrand.Schema.Runtime do
                 {Map.put(normalized, name, normalized_value), errors}
 
               {:error, reason} ->
-                {normalized, Map.put(errors, name, reason)}
+                {normalized, put_error(errors, name, reason)}
             end
 
           :missing ->
-            {next_normalized, next_errors, _unused} =
-              handle_missing_field(
-                name,
-                schema_without_opts,
-                field_opts,
-                normalized,
-                errors,
-                :unused
-              )
+            case resolve_missing_field(schema_without_opts, field_opts) do
+              {:ok, default_or_nil} ->
+                {Map.put(normalized, name, default_or_nil), errors}
 
-            {next_normalized, next_errors}
+              {:error, reason} ->
+                {normalized, put_error(errors, name, reason)}
+            end
         end
       end)
 
-    case map_size(errors) do
-      0 -> {:ok, normalized}
-      _ -> {:error, errors}
-    end
+    maybe_error_or_ok(errors, normalized)
   end
 
   defp validate_list(value, item_schema, opts) when is_list(value) do
+    fail_fast = fail_fast?(opts)
+
+    if fail_fast do
+      validate_list_fail_fast(value, item_schema, opts)
+    else
+      validate_list_collect_all(value, item_schema, opts)
+    end
+  end
+
+  defp validate_list(_value, _item_schema, _opts), do: {:error, :invalid_type}
+
+  defp validate_list_fail_fast(value, item_schema, opts) do
+    with {:ok, normalized_items_reversed} <- validate_list_items_fail_fast(value, item_schema),
+         :ok <- validate_list_constraints_fail_fast(value, opts) do
+      {:ok, Enum.reverse(normalized_items_reversed)}
+    else
+      {:error, {index, reason}} -> {:error, %{index => reason}}
+      {:error, reason} -> {:error, %{__self__: reason}}
+    end
+  end
+
+  defp validate_list_collect_all(value, item_schema, opts) do
     {normalized_items, item_errors} =
       value
       |> Enum.with_index()
-      |> Enum.reduce({[], %{}}, fn {item, index}, {normalized_items, item_errors} ->
+      |> Enum.reduce({[], nil}, fn {item, index}, {normalized_items, item_errors} ->
         case validate_schema(item, item_schema) do
           {:ok, normalized_item} -> {[normalized_item | normalized_items], item_errors}
-          {:error, reason} -> {normalized_items, Map.put(item_errors, index, reason)}
+          {:error, reason} -> {normalized_items, put_error(item_errors, index, reason)}
         end
       end)
 
@@ -183,42 +264,13 @@ defmodule ExBrand.Schema.Runtime do
           apply_compiled_list_constraints(value, normalized_items, item_errors, checks)
       end
 
-    case result do
-      {:ok, normalized_value} -> {:ok, normalized_value}
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
-  defp validate_list(_value, _item_schema, _opts), do: {:error, :invalid_type}
-
-  defp handle_missing_field(name, field_schema, field_opts, normalized, errors, consumed_keys) do
-    cond do
-      Keyword.has_key?(field_opts, :default) ->
-        case validate_schema(Keyword.fetch!(field_opts, :default), field_schema) do
-          {:ok, default_value} ->
-            {Map.put(normalized, name, default_value), errors, consumed_keys}
-
-          {:error, reason} ->
-            {normalized, Map.put(errors, name, reason), consumed_keys}
-        end
-
-      Keyword.get(field_opts, :optional, false) ->
-        {Map.put(normalized, name, nil), errors, consumed_keys}
-
-      true ->
-        {normalized, Map.put(errors, name, :required), consumed_keys}
-    end
+    result
   end
 
   defp append_extra_field_errors(value, consumed_keys, errors) do
-    extra_fields =
-      value
-      |> Map.keys()
-      |> Enum.reject(&MapSet.member?(consumed_keys, &1))
-
-    case extra_fields do
+    case extra_fields(value, consumed_keys) do
       [] -> errors
-      _ -> Map.put(errors, Definition.internal_error_key(), Enum.sort(extra_fields))
+      fields -> put_error(errors, Definition.internal_error_key(), Enum.sort(fields))
     end
   end
 
@@ -275,6 +327,11 @@ defmodule ExBrand.Schema.Runtime do
     end
   end
 
+  defp fail_fast?(opts) do
+    _ = opts
+    schema_fail_fast_enabled?()
+  end
+
   defp empty_compiled_runtime_metadata do
     %{
       generic_checks: [],
@@ -282,6 +339,14 @@ defmodule ExBrand.Schema.Runtime do
       validator: nil,
       validator_error: :invalid_value
     }
+  end
+
+  defp schema_fail_fast_enabled? do
+    case Application.get_env(:ex_brand, :schema_fail_fast, false) do
+      true -> true
+      false -> false
+      _other -> false
+    end
   end
 
   defp fetch_field_value(params, {:compiled, lookup}) do
@@ -372,10 +437,7 @@ defmodule ExBrand.Schema.Runtime do
       |> maybe_put_self_error(check_max_items(original_items, opts))
       |> maybe_put_self_error(check_unique_items(original_items, opts))
 
-    case map_size(errors) do
-      0 -> {:ok, normalized_items}
-      _ -> {:error, errors}
-    end
+    maybe_error_or_ok(errors, normalized_items)
   end
 
   defp apply_compiled_list_constraints(original_items, normalized_items, item_errors, checks) do
@@ -387,14 +449,70 @@ defmodule ExBrand.Schema.Runtime do
       |> maybe_put_self_error(run_compiled_list_check(checks, :max_items, list_context))
       |> maybe_put_self_error(run_compiled_list_uniqueness_check(original_items, checks))
 
-    case map_size(errors) do
-      0 -> {:ok, normalized_items}
-      _ -> {:error, errors}
-    end
+    maybe_error_or_ok(errors, normalized_items)
   end
 
   defp maybe_put_self_error(errors, :ok), do: errors
+  defp maybe_put_self_error(nil, {:error, reason}), do: %{__self__: reason}
   defp maybe_put_self_error(errors, {:error, reason}), do: Map.put(errors, :__self__, reason)
+
+  defp maybe_error_or_ok(nil, ok_value), do: {:ok, ok_value}
+  defp maybe_error_or_ok(errors, _ok_value), do: {:error, errors}
+
+  defp put_error(nil, key, reason), do: %{key => reason}
+  defp put_error(errors, key, reason), do: Map.put(errors, key, reason)
+
+  defp resolve_missing_field(field_schema, field_opts) do
+    cond do
+      Keyword.has_key?(field_opts, :default) ->
+        validate_schema(Keyword.fetch!(field_opts, :default), field_schema)
+
+      Keyword.get(field_opts, :optional, false) ->
+        {:ok, nil}
+
+      true ->
+        {:error, :required}
+    end
+  end
+
+  defp extra_fields(value, consumed_keys) do
+    value
+    |> Map.keys()
+    |> Enum.reject(&MapSet.member?(consumed_keys, &1))
+  end
+
+  defp validate_list_items_fail_fast(value, item_schema) do
+    Enum.reduce_while(Enum.with_index(value), {:ok, []}, fn {item, index},
+                                                            {:ok, normalized_items} ->
+      case validate_schema(item, item_schema) do
+        {:ok, normalized_item} ->
+          {:cont, {:ok, [normalized_item | normalized_items]}}
+
+        {:error, reason} ->
+          {:halt, {:error, {index, reason}}}
+      end
+    end)
+  end
+
+  defp validate_list_constraints_fail_fast(original_items, opts) do
+    case compiled_list_checks(opts) do
+      nil ->
+        with :ok <- check_min_items(original_items, opts),
+             :ok <- check_max_items(original_items, opts),
+             :ok <- check_unique_items(original_items, opts) do
+          :ok
+        end
+
+      checks ->
+        context = build_compiled_list_context(original_items, checks)
+
+        with :ok <- run_compiled_list_check(checks, :min_items, context),
+             :ok <- run_compiled_list_check(checks, :max_items, context),
+             :ok <- run_compiled_list_uniqueness_check(original_items, checks) do
+          :ok
+        end
+    end
+  end
 
   defp build_compiled_generic_context(value) when is_binary(value),
     do: %{string_length: String.length(value)}
