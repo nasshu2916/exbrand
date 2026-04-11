@@ -89,9 +89,9 @@ defmodule ExBrand.Schema.Runtime do
     {normalized, errors, consumed_keys} =
       Enum.reduce(schema_fields, {%{}, %{}, MapSet.new()}, fn {name, field_schema}, acc ->
         {normalized, errors, consumed_keys} = acc
-        schema = field_schema(field_schema)
-        field_opts = field_opts(field_schema)
-        field_lookup = field_lookup(field_schema, name, field_opts)
+
+        {schema, field_opts, field_lookup, schema_without_opts} =
+          field_metadata(field_schema, name)
 
         case fetch_field_value(value, field_lookup) do
           {:ok, field_value, used_key} ->
@@ -107,7 +107,7 @@ defmodule ExBrand.Schema.Runtime do
           :missing ->
             handle_missing_field(
               name,
-              field_schema_without_opts(schema),
+              schema_without_opts,
               field_opts,
               normalized,
               errors,
@@ -127,9 +127,8 @@ defmodule ExBrand.Schema.Runtime do
   defp validate_map_relaxed(value, schema_fields) do
     {normalized, errors} =
       Enum.reduce(schema_fields, {%{}, %{}}, fn {name, field_schema}, {normalized, errors} ->
-        schema = field_schema(field_schema)
-        field_opts = field_opts(field_schema)
-        field_lookup = field_lookup(field_schema, name, field_opts)
+        {schema, field_opts, field_lookup, schema_without_opts} =
+          field_metadata(field_schema, name)
 
         case fetch_field_value(value, field_lookup) do
           {:ok, field_value, _used_key} ->
@@ -145,7 +144,7 @@ defmodule ExBrand.Schema.Runtime do
             {next_normalized, next_errors, _unused} =
               handle_missing_field(
                 name,
-                field_schema_without_opts(schema),
+                schema_without_opts,
                 field_opts,
                 normalized,
                 errors,
@@ -232,6 +231,19 @@ defmodule ExBrand.Schema.Runtime do
     true
   rescue
     ArgumentError -> false
+  end
+
+  defp field_metadata(
+         %{schema: schema, schema_without_opts: schema_without_opts, opts: opts, lookup: lookup},
+         _name
+       ) do
+    {schema, opts, {:compiled, lookup}, schema_without_opts}
+  end
+
+  defp field_metadata(field_schema, name) do
+    schema = field_schema(field_schema)
+    opts = field_opts(field_schema)
+    {schema, opts, field_lookup(field_schema, name, opts), field_schema_without_opts(schema)}
   end
 
   defp field_schema(%{schema: schema}), do: schema

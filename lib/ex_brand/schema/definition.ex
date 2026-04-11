@@ -65,7 +65,13 @@ defmodule ExBrand.Schema.Definition do
   @type runtime_node_kind() :: :list | :map | :terminal
   @type runtime_terminal() :: {:base, term()} | {:brand, module()} | {:schema, module()}
   @type runtime_lookup_entry() :: atom() | String.t() | {:existing_atom_binary, String.t()}
-  @type runtime_field() :: %{lookup: [runtime_lookup_entry(), ...], schema: runtime_node()}
+  @type runtime_field() ::
+          %{
+            lookup: [runtime_lookup_entry(), ...],
+            schema: runtime_node(),
+            schema_without_opts: runtime_node(),
+            opts: keyword()
+          }
   @type runtime_constraint_plan() ::
           %{
             generic_checks: [term()],
@@ -122,10 +128,13 @@ defmodule ExBrand.Schema.Definition do
 
   @spec compile_runtime_field!(atom(), term()) :: runtime_field()
   def compile_runtime_field!(name, field_schema) when is_atom(name) do
-    {_base_schema, opts} = split_schema_opts(field_schema)
+    {field_base_schema, opts} = split_schema_opts(field_schema)
+    compiled_schema = compile_runtime_schema!(field_schema)
 
     %{
-      schema: compile_runtime_schema!(field_schema),
+      schema: compiled_schema,
+      schema_without_opts: compile_runtime_schema!(field_base_schema),
+      opts: opts,
       lookup: compile_field_lookup(name, opts)
     }
   end

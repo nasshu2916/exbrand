@@ -49,33 +49,48 @@ defmodule ExBrand.Schema.DefinitionTest do
 
     assert %{
              schema: {:compiled, :terminal, {:brand, Types.UserID}, user_id_opts},
+             schema_without_opts: {:compiled, :terminal, {:brand, Types.UserID}, no_user_id_opts},
+             opts: [],
              lookup: [:user_id, "user_id"]
            } =
              compiled_fields.user_id
 
     assert Definition.compiled_runtime_metadata(user_id_opts)
+    assert Definition.compiled_runtime_metadata(no_user_id_opts)
 
     assert %{
              schema: {:compiled, :terminal, {:brand, Types.Email}, contact_email_opts},
+             schema_without_opts:
+               {:compiled, :terminal, {:brand, Types.Email}, no_contact_email_opts},
+             opts: [field: "contactEmail"],
              lookup: ["contactEmail", {:existing_atom_binary, "contactEmail"}]
            } =
              compiled_fields.contact_email
 
     assert contact_email_opts[:field] == "contactEmail"
     assert Definition.compiled_runtime_metadata(contact_email_opts)
+    assert Definition.compiled_runtime_metadata(no_contact_email_opts)
 
     assert %{
              schema: {:compiled, :terminal, {:schema, AddressSchema}, profile_opts},
+             schema_without_opts:
+               {:compiled, :terminal, {:schema, AddressSchema}, no_profile_opts},
+             opts: [optional: true],
              lookup: [:profile, "profile"]
            } =
              compiled_fields.profile
 
     assert profile_opts[:optional] == true
     assert Definition.compiled_runtime_metadata(profile_opts)
+    assert Definition.compiled_runtime_metadata(no_profile_opts)
 
     assert %{
              schema:
                {:compiled, :list, {:compiled, :terminal, {:base, :string}, item_opts}, list_opts},
+             schema_without_opts:
+               {:compiled, :list, {:compiled, :terminal, {:base, :string}, no_item_opts},
+                no_list_opts},
+             opts: [min_items: 1],
              lookup: [:tags, "tags"]
            } = compiled_fields.tags
 
@@ -83,6 +98,8 @@ defmodule ExBrand.Schema.DefinitionTest do
     assert list_opts[:min_items] == 1
     assert Definition.compiled_runtime_metadata(item_opts)
     assert Definition.compiled_runtime_metadata(list_opts)
+    assert Definition.compiled_runtime_metadata(no_item_opts)
+    assert Definition.compiled_runtime_metadata(no_list_opts)
   end
 
   test "normalize_field_opts/1 rejects unsupported field options" do
