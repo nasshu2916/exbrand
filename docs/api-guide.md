@@ -127,6 +127,7 @@ end
 - `default`
 - `field`
 - `tolerant`
+- `allow_extra_fields`
 
 既存の `validate:` / `error:` も後方互換のため利用できます。
 

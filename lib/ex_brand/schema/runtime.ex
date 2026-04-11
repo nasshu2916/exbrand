@@ -7,7 +7,9 @@ defmodule ExBrand.Schema.Runtime do
   @spec validate(term(), term()) :: {:ok, term()} | {:error, term()}
   def validate(value, schema), do: validate_schema(value, schema)
 
-  defp validate_schema(value, {:compiled, kind, data, opts}) do
+  @spec validate_compiled(term(), :map | :list | :terminal, term(), keyword()) ::
+          {:ok, term()} | {:error, term()}
+  def validate_compiled(value, kind, data, opts) do
     metadata = compiled_runtime_metadata(opts) || empty_compiled_runtime_metadata()
 
     if Keyword.get(opts, :nullable, false) and is_nil(value) do
@@ -21,6 +23,10 @@ defmodule ExBrand.Schema.Runtime do
         {:error, reason} -> {:error, wrap_error(reason, opts)}
       end
     end
+  end
+
+  defp validate_schema(value, {:compiled, kind, data, opts}) do
+    validate_compiled(value, kind, data, opts)
   end
 
   defp validate_schema(value, schema) do
@@ -70,8 +76,16 @@ defmodule ExBrand.Schema.Runtime do
   end
 
   defp validate_map(value, schema_fields, opts) when is_map(value) do
-    tolerant = Keyword.get(opts, :tolerant, false)
+    if reject_extra_fields?(opts) do
+      validate_map_strict(value, schema_fields)
+    else
+      validate_map_relaxed(value, schema_fields)
+    end
+  end
 
+  defp validate_map(_value, _schema_fields, _opts), do: {:error, :invalid_type}
+
+  defp validate_map_strict(value, schema_fields) do
     {normalized, errors, consumed_keys} =
       Enum.reduce(schema_fields, {%{}, %{}, MapSet.new()}, fn {name, field_schema}, acc ->
         {normalized, errors, consumed_keys} = acc
@@ -102,12 +116,7 @@ defmodule ExBrand.Schema.Runtime do
         end
       end)
 
-    errors =
-      if tolerant do
-        errors
-      else
-        append_extra_field_errors(value, consumed_keys, errors)
-      end
+    errors = append_extra_field_errors(value, consumed_keys, errors)
 
     case map_size(errors) do
       0 -> {:ok, normalized}
@@ -115,7 +124,43 @@ defmodule ExBrand.Schema.Runtime do
     end
   end
 
-  defp validate_map(_value, _schema_fields, _opts), do: {:error, :invalid_type}
+  defp validate_map_relaxed(value, schema_fields) do
+    {normalized, errors} =
+      Enum.reduce(schema_fields, {%{}, %{}}, fn {name, field_schema}, {normalized, errors} ->
+        schema = field_schema(field_schema)
+        field_opts = field_opts(field_schema)
+        field_lookup = field_lookup(field_schema, name, field_opts)
+
+        case fetch_field_value(value, field_lookup) do
+          {:ok, field_value, _used_key} ->
+            case validate_schema(field_value, schema) do
+              {:ok, normalized_value} ->
+                {Map.put(normalized, name, normalized_value), errors}
+
+              {:error, reason} ->
+                {normalized, Map.put(errors, name, reason)}
+            end
+
+          :missing ->
+            {next_normalized, next_errors, _unused} =
+              handle_missing_field(
+                name,
+                field_schema_without_opts(schema),
+                field_opts,
+                normalized,
+                errors,
+                :unused
+              )
+
+            {next_normalized, next_errors}
+        end
+      end)
+
+    case map_size(errors) do
+      0 -> {:ok, normalized}
+      _ -> {:error, errors}
+    end
+  end
 
   defp validate_list(value, item_schema, opts) when is_list(value) do
     {normalized_items, item_errors} =
@@ -176,6 +221,10 @@ defmodule ExBrand.Schema.Runtime do
       [] -> errors
       _ -> Map.put(errors, Definition.internal_error_key(), Enum.sort(extra_fields))
     end
+  end
+
+  defp reject_extra_fields?(opts) do
+    not (Keyword.get(opts, :tolerant, false) or Keyword.get(opts, :allow_extra_fields, false))
   end
 
   defp atomizable_key?(key) do

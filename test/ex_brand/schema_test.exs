@@ -189,6 +189,20 @@ defmodule ExBrand.SchemaTest do
                  end
   end
 
+  test "allow_extra_fields is rejected at compile time for scalar fields" do
+    assert_raise ArgumentError,
+                 ~r/unsupported constraints for string at field :email: :allow_extra_fields/,
+                 fn ->
+                   Code.compile_string("""
+                   defmodule InvalidAllowExtraFieldsForScalarSchema do
+                     use ExBrand.Schema
+
+                     field :email, {:string, allow_extra_fields: true}
+                   end
+                   """)
+                 end
+  end
+
   test "invalid constraint values are rejected at compile time" do
     assert_raise ArgumentError,
                  ~r/invalid constraint value at field :published_at: :format => :uuid/,

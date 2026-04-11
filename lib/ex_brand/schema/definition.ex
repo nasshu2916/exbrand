@@ -5,6 +5,7 @@ defmodule ExBrand.Schema.Definition do
 
   @field_alias_keys [:required, :from]
   @schema_option_keys [
+    :allow_extra_fields,
     :default,
     :enum,
     :error,
@@ -23,7 +24,7 @@ defmodule ExBrand.Schema.Definition do
     :validate
   ]
   @generic_constraint_keys [:default, :enum, :error, :nullable, :optional, :field, :validate]
-  @map_constraint_keys [:tolerant | @generic_constraint_keys]
+  @map_constraint_keys [:allow_extra_fields, :tolerant | @generic_constraint_keys]
   @list_constraint_keys [:min_items, :max_items, :unique_items | @generic_constraint_keys]
   @string_constraint_keys [:format, :min_length, :max_length | @generic_constraint_keys]
   @numeric_constraint_keys [:minimum, :maximum | @generic_constraint_keys]
@@ -282,6 +283,9 @@ defmodule ExBrand.Schema.Definition do
         :ok
 
       {:optional, value} when is_boolean(value) ->
+        :ok
+
+      {:allow_extra_fields, value} when is_boolean(value) ->
         :ok
 
       {:tolerant, value} when is_boolean(value) ->

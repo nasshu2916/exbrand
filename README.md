@@ -126,7 +126,7 @@ params.status
 
 主な制約は `minimum`, `maximum`, `min_length`, `max_length`, `min_items`,
 `max_items`, `unique_items`, `enum`, `format`, `nullable`, `optional`,
-`default`, `field`, `tolerant` をサポートします。
+`default`, `field`, `tolerant`, `allow_extra_fields` をサポートします。
 
 ## ドキュメント
 

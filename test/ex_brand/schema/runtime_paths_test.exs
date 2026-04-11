@@ -54,6 +54,13 @@ defmodule ExBrand.Schema.RuntimePathsTest do
              {:ok, %{email: "a@example.com"}}
   end
 
+  test "allow_extra_fields skips extra-field rejection for map schema" do
+    schema = {%{email: :string}, allow_extra_fields: true}
+
+    assert Schema.validate(%{email: "a@example.com", unknown: "value"}, schema) ==
+             {:ok, %{email: "a@example.com"}}
+  end
+
   test "custom runtime validator can normalize nested values and wrap errors" do
     schema =
       {%{
