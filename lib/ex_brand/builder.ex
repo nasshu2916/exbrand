@@ -156,9 +156,20 @@ defmodule ExBrand.Builder do
          signature_verification: signature_verification
        }) do
     new_ast = build_optimized_new_ast(base, validate, signature_verification)
+    unsafe_struct_ast = build_brand_struct_from_value_ast(signature_verification)
 
     quote do
       unquote(new_ast)
+
+      @doc """
+      raw 値から検証を行わずに brand 値を生成する。
+
+      高信頼な境界内でのみ利用すること。
+      """
+      @spec unsafe_new(raw()) :: {:ok, t()}
+      def unsafe_new(value) do
+        {:ok, unquote(unsafe_struct_ast)}
+      end
 
       @doc """
       `new/1` の bang 版。

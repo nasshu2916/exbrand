@@ -58,7 +58,7 @@ user_id = 1
 email = "user@example.com"
 
 defmodule ExBrand.Bench.Config do
-  @iterations 10
+  @iterations 100
   def iterations, do: @iterations
 end
 
@@ -69,6 +69,11 @@ Benchee.run(
         {:ok, _brand} = ExBrand.Bench.Types.UserID.new(user_id)
       end)
     end,
+    "brand user_id unsafe_new/1" => fn ->
+      Enum.each(1..ExBrand.Bench.Config.iterations(), fn _ ->
+        {:ok, _brand} = ExBrand.Bench.Types.UserID.unsafe_new(user_id)
+      end)
+    end,
     "primitive user_id validate" => fn ->
       Enum.each(1..ExBrand.Bench.Config.iterations(), fn _ ->
         {:ok, _value} = ExBrand.Bench.Primitive.validate_user_id(user_id)
@@ -77,6 +82,11 @@ Benchee.run(
     "brand email new/1" => fn ->
       Enum.each(1..ExBrand.Bench.Config.iterations(), fn _ ->
         {:ok, _brand} = ExBrand.Bench.Types.Email.new(email)
+      end)
+    end,
+    "brand email unsafe_new/1" => fn ->
+      Enum.each(1..ExBrand.Bench.Config.iterations(), fn _ ->
+        {:ok, _brand} = ExBrand.Bench.Types.Email.unsafe_new(email)
       end)
     end,
     "primitive email validate" => fn ->

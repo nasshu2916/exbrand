@@ -173,6 +173,21 @@ defmodule ExBrand.BuilderTest do
     assert Types.UserID.new("1") == {:error, :invalid_type}
   end
 
+  test "unsafe_new/1 bypasses base validation and custom validator" do
+    assert {:ok, unsafe_user_id} = Types.UserID.unsafe_new("1")
+    assert Types.UserID.unwrap(unsafe_user_id) == "1"
+
+    assert {:ok, unsafe_email} = Types.Email.unsafe_new("invalid")
+    assert Types.Email.unwrap(unsafe_email) == "invalid"
+  end
+
+  test "unsafe_new/1 generates a valid signed brand when signature verification is enabled" do
+    module = compile_brand_with_signature_verification(true, "SignedUnsafeNewUserIDBrand")
+    assert {:ok, unsafe_brand} = module.unsafe_new("invalid_type")
+    assert module.brand?(unsafe_brand)
+    assert module.unwrap(unsafe_brand) == "invalid_type"
+  end
+
   test "new! raises custom exception" do
     assert_raise ExBrand.Error, fn ->
       Types.PositiveUserID.new!(0)

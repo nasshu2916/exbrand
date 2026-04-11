@@ -13,6 +13,17 @@
 すでに brand 値を渡した場合でも、内部 raw 値を再検証します。  
 `cast!/1` は失敗時に `ExBrand.Error` を raise します。
 
+## Unsafe New
+
+`unsafe_new/1` は base type 検証と custom validator をスキップして brand 値を生成します。
+
+```elixir
+{:ok, user_id} = MyApp.Types.UserID.unsafe_new("not_an_integer")
+"not_an_integer" = MyApp.Types.UserID.unwrap(user_id)
+```
+
+この API は高信頼な境界内だけで使ってください。外部入力に対して使うと、brand に不正な raw 値が混入します。
+
 ## Ecto Load / Dump
 
 DB 境界の `load` / `dump` は brand module 直下ではなく、Ecto adapter 側で扱います。
