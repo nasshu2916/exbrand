@@ -1,5 +1,5 @@
 defmodule ExBrand.BuilderTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias ExBrand.TestSupport.Fixtures.Brands.{
     DerivedUserID,
@@ -93,43 +93,6 @@ defmodule ExBrand.BuilderTest do
   test "validate option rejects invalid value" do
     assert Types.Email.new("user@example.com") |> elem(0) == :ok
     assert Types.Email.new("invalid") == {:error, :invalid_email}
-  end
-
-  test "cast accepts valid raw value" do
-    assert {:ok, user_id} = Types.UserID.cast(1)
-    assert Types.UserID.unwrap(user_id) == 1
-  end
-
-  test "cast accepts the same brand value and keeps it valid" do
-    user_id = Types.UserID.new!(1)
-
-    assert {:ok, casted_user_id} = Types.UserID.cast(user_id)
-    assert casted_user_id == user_id
-  end
-
-  test "cast revalidates an existing brand value" do
-    module =
-      compile_brand_module_with_signature_verification(
-        true,
-        "SignedEmailForCastBrand",
-        "defbrand GeneratedBrand, {:string, validate: &String.contains?(&1, \"@\"), error: :invalid_email}"
-      )
-
-    forged_email = struct(module, __value__: "invalid", __signature__: 0)
-
-    assert_raise ArgumentError, ~r/invalid forged or mutated brand value/, fn ->
-      module.cast(forged_email)
-    end
-  end
-
-  test "cast rejects invalid raw value" do
-    assert Types.UserID.cast("1") == {:error, :invalid_type}
-  end
-
-  test "cast! raises custom exception on invalid value" do
-    assert_raise ExBrand.Error, fn ->
-      Types.PositiveUserID.cast!(0)
-    end
   end
 
   test "signature verification is disabled by default for newly compiled brands" do

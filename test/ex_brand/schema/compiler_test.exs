@@ -11,9 +11,9 @@ defmodule ExBrand.Schema.CompilerTest do
   end
 
   test "build_field_ast!/1 returns field AST for valid definitions" do
-    ast = Compiler.build_field_ast!({:age, {:integer, optional: true}})
+    ast = Compiler.build_field_ast!({:age, {:integer, minimum: 1}})
 
-    assert Macro.to_string(ast) == "{:age, {:integer, optional: true}}"
+    assert Macro.to_string(ast) == "{:age, {:integer, minimum: 1}}"
   end
 
   test "validate_schema_definition!/2 rejects invalid list and map constraints" do
@@ -36,7 +36,7 @@ defmodule ExBrand.Schema.CompilerTest do
   test "validate_schema_definition!/2 traverses nested schemas" do
     assert :ok =
              Compiler.validate_schema_definition!(
-               {%{address: AddressSchema}, optional: true},
+               {%{address: AddressSchema}, []},
                "field :profile"
              )
   end

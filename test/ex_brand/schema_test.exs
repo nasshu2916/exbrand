@@ -12,6 +12,8 @@ defmodule ExBrand.SchemaTest do
                user_id: 1,
                email: "user@example.com",
                age: 20,
+               nickname: "test_name",
+               status: "active",
                tags: ["elixir", "otp"],
                published_at: "2026-04-02T12:34:56Z"
              })
@@ -21,7 +23,7 @@ defmodule ExBrand.SchemaTest do
     assert Types.Email.unwrap(result.email) == "user@example.com"
     assert Types.Email.unwrap(result.contact_email) == "contact@example.com"
     assert result.age == 20
-    assert result.nickname == nil
+    assert result.nickname == "test_name"
     assert result.status == "active"
     assert result.address == %{city: "Tokyo", zip: "15000"}
     assert result.tags == ["elixir", "otp"]
@@ -35,7 +37,11 @@ defmodule ExBrand.SchemaTest do
                address: %{city: "Tokyo", zip: "15000"},
                user_id: 1,
                email: "user@example.com",
-               age: 20
+               age: 20,
+               nickname: "test_name",
+               status: "active",
+               tags: ["elixir", "otp"],
+               published_at: "2026-04-02T12:34:56Z"
              })
 
     assert Types.Email.unwrap(result.contact_email) == "contact@example.com"
@@ -57,6 +63,8 @@ defmodule ExBrand.SchemaTest do
              user_id: :invalid_type,
              email: :invalid_email,
              age: :too_young,
+             nickname: :required,
+             status: :required,
              contact_email: :invalid_email,
              address: %{zip: :shorter_than_min_length},
              tags: %{
@@ -69,11 +77,19 @@ defmodule ExBrand.SchemaTest do
   end
 
   test "schema reports required fields" do
-    assert {:error, %{user_id: :required, contact_email: :required, address: :required}} =
+    assert {:error, errors} =
              UserSchema.validate(%{
                email: "user@example.com",
                age: 20
              })
+
+    assert errors.user_id == :required
+    assert errors.contact_email == :required
+    assert errors.address == :required
+    assert errors.nickname == :required
+    assert errors.status == :required
+    assert errors.tags == :required
+    assert errors.published_at == :required
   end
 
   test "schema rejects unknown fields by default" do
@@ -84,18 +100,20 @@ defmodule ExBrand.SchemaTest do
                user_id: 1,
                email: "user@example.com",
                age: 20,
+               nickname: "test_name",
+               status: "active",
+               tags: ["elixir", "otp"],
+               published_at: "2026-04-02T12:34:56Z",
                unknown: "value"
              })
   end
 
-  test "tolerant schema accepts unknown fields" do
-    assert {:ok, %{user_id: user_id}} =
+  test "schema rejects unknown fields for simple schemas too" do
+    assert {:error, %{__extra_fields__: [:unknown]}} =
              TolerantUserSchema.validate(%{
                user_id: 1,
                unknown: "value"
              })
-
-    assert Types.UserID.unwrap(user_id) == 1
   end
 
   test "schema validates nested schema directly" do
@@ -109,28 +127,27 @@ defmodule ExBrand.SchemaTest do
                 user_id: Types.UserID,
                 email: Types.Email,
                 age: {:integer, minimum: 18, error: :too_young},
-                nickname: {:string, optional: true},
-                status: {:string, default: "active"},
+                nickname: :string,
+                status: :string,
                 contact_email: {Types.Email, field: "contactEmail"},
                 address: AddressSchema,
-                tags:
-                  {[{:string, min_length: 2}], min_items: 1, unique_items: true, optional: true},
-                published_at: {:string, format: :datetime, optional: true}
-              }, tolerant: false}
+                tags: {[{:string, min_length: 2}], min_items: 1, unique_items: true},
+                published_at: {:string, format: :datetime}
+              }, []}
 
     assert Definition.compiled_runtime_schema?(UserSchema.__compiled_schema__())
   end
 
   test "schema supports inline map schema" do
     schema =
-      {%{name: {:string, min_length: 1}, age: {:integer, minimum: 18}}, tolerant: false}
+      {%{name: {:string, min_length: 1}, age: {:integer, minimum: 18}}, []}
       |> ExBrand.Schema.compile!()
 
-    assert {:ok, %{name: "naoya", age: 20}} =
-             ExBrand.Schema.validate(%{name: "naoya", age: 20}, schema)
+    assert {:ok, %{name: "test_name", age: 20}} =
+             ExBrand.Schema.validate(%{name: "test_name", age: 20}, schema)
 
     assert {:error, %{age: :less_than_minimum}} =
-             ExBrand.Schema.validate(%{name: "naoya", age: 17}, schema)
+             ExBrand.Schema.validate(%{name: "test_name", age: 17}, schema)
   end
 
   test "schema supports direct list schema" do
@@ -168,7 +185,7 @@ defmodule ExBrand.SchemaTest do
        end}
       |> ExBrand.Schema.compile!()
 
-    assert {:ok, "naoya"} = ExBrand.Schema.validate("  naoya  ", schema)
+    assert {:ok, "test_name"} = ExBrand.Schema.validate("  test_name  ", schema)
   end
 
   test "unsupported constraints are rejected at compile time for scalar fields" do
@@ -201,7 +218,7 @@ defmodule ExBrand.SchemaTest do
 
   test "allow_extra_fields is rejected at compile time for scalar fields" do
     assert_raise ArgumentError,
-                 ~r/unsupported constraints for string at field :email: :allow_extra_fields/,
+                 ~r/invalid constraint value at field :email: :allow_extra_fields => true/,
                  fn ->
                    Code.compile_string("""
                    defmodule InvalidAllowExtraFieldsForScalarSchema do
@@ -228,7 +245,7 @@ defmodule ExBrand.SchemaTest do
   end
 
   test "use ExBrand.Schema rejects unsupported options" do
-    assert_raise ArgumentError, ~r/unsupported use ExBrand.Schema options: :fail_fast/, fn ->
+    assert_raise ArgumentError, ~r/use ExBrand.Schema does not accept options/, fn ->
       Code.compile_string("""
       defmodule InvalidUseSchemaOption do
         use ExBrand.Schema, fail_fast: true
@@ -249,7 +266,11 @@ defmodule ExBrand.SchemaTest do
              address: %{city: "Tokyo", zip: "15000"},
              user_id: 1,
              email: "user@example.com",
-             age: 20
+             age: 20,
+             nickname: "test_name",
+             status: "active",
+             tags: ["elixir", "otp"],
+             published_at: "2026-04-02T12:34:56Z"
            })
 
     refute UserSchema.valid?(%{user_id: "1"})
@@ -271,8 +292,12 @@ defmodule ExBrand.SchemaTest do
              user_id: :required,
              email: :invalid_email,
              age: :too_young,
+             nickname: :required,
+             status: :required,
              contact_email: :required,
-             address: :required
+             address: :required,
+             tags: :required,
+             published_at: :required
            }
   end
 

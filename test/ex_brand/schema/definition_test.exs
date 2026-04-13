@@ -6,7 +6,7 @@ defmodule ExBrand.Schema.DefinitionTest do
   alias ExBrand.TestSupport.Fixtures.{AddressSchema, Types}
 
   test "returns exported schema metadata keys" do
-    assert :default in Definition.schema_option_keys()
+    refute :default in Definition.schema_option_keys()
     assert :validate in Definition.schema_option_keys()
     assert Definition.internal_error_key() == :__extra_fields__
   end
@@ -32,16 +32,16 @@ defmodule ExBrand.Schema.DefinitionTest do
         %{
           user_id: Types.UserID,
           contact_email: {Types.Email, field: "contactEmail"},
-          profile: {AddressSchema, optional: true},
+          profile: AddressSchema,
           tags: {[{:string, min_length: 2}], min_items: 1}
         },
-        tolerant: false
+        []
       })
 
     assert Definition.compiled_runtime_schema?(compiled)
 
     assert {:compiled, :map, compiled_fields, opts} = compiled
-    assert opts[:tolerant] == false
+    assert Keyword.has_key?(opts, :__compiled_metadata__)
     assert Definition.compiled_runtime_metadata(opts)
 
     assert %{
@@ -72,12 +72,12 @@ defmodule ExBrand.Schema.DefinitionTest do
              schema: {:compiled, :terminal, {:schema, AddressSchema}, profile_opts},
              schema_without_opts:
                {:compiled, :terminal, {:schema, AddressSchema}, no_profile_opts},
-             opts: [optional: true],
+             opts: [],
              lookup: [:profile, "profile"]
            } =
              compiled_fields.profile
 
-    assert profile_opts[:optional] == true
+    assert Keyword.has_key?(profile_opts, :__compiled_metadata__)
     assert Definition.compiled_runtime_metadata(profile_opts)
     assert Definition.compiled_runtime_metadata(no_profile_opts)
 
@@ -114,7 +114,6 @@ defmodule ExBrand.Schema.DefinitionTest do
     assert :ok =
              Definition.validate_constraint_values!(
                [
-                 default: "value",
                  enum: ["a", "b"],
                  error: :invalid,
                  field: "email",
@@ -126,8 +125,6 @@ defmodule ExBrand.Schema.DefinitionTest do
                  min_length: 1,
                  minimum: 0,
                  nullable: false,
-                 optional: true,
-                 tolerant: false,
                  unique_items: true,
                  validate: fn value -> value end
                ],
@@ -165,18 +162,10 @@ defmodule ExBrand.Schema.DefinitionTest do
              )
 
     assert :ok =
-             Definition.validate_terminal_schema_definition!(
-               Types.UserID,
-               [optional: true],
-               "field :user_id"
-             )
+             Definition.validate_terminal_schema_definition!(Types.UserID, [], "field :user_id")
 
     assert :ok =
-             Definition.validate_terminal_schema_definition!(
-               AddressSchema,
-               [optional: true],
-               "field :address"
-             )
+             Definition.validate_terminal_schema_definition!(AddressSchema, [], "field :address")
 
     assert_raise ArgumentError, ~r/invalid schema at field :missing: "bad"/, fn ->
       Definition.validate_terminal_schema_definition!("bad", [], "field :missing")
@@ -204,7 +193,7 @@ defmodule ExBrand.Schema.DefinitionTest do
     assert Definition.infer_constraint_profile("bad") == :error
 
     assert Definition.allowed_constraint_keys_for_profile(:custom_base) ==
-             [:default, :enum, :error, :nullable, :optional, :field, :validate]
+             [:enum, :error, :nullable, :field, :validate]
 
     assert Definition.scalar_profile_for_brand(Types.UserID) == :integer
     assert Definition.scalar_profile_for_brand(Types.Email) == :string
@@ -213,7 +202,7 @@ defmodule ExBrand.Schema.DefinitionTest do
   end
 
   test "constraint key helpers expose map and list keys" do
-    assert :tolerant in Definition.map_constraint_keys()
+    refute :tolerant in Definition.map_constraint_keys()
     assert :min_items in Definition.list_constraint_keys()
     refute :tolerant in Definition.list_constraint_keys()
   end

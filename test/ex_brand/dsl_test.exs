@@ -1,8 +1,6 @@
 defmodule ExBrand.DSLTest do
   use ExUnit.Case, async: true
 
-  alias ExBrand.TestSupport.Fixtures.{AliasedTypes, SelectivelyAliasedTypes}
-
   test "tuple-style brand definition is supported" do
     modules =
       Code.compile_string("""
@@ -52,13 +50,13 @@ defmodule ExBrand.DSLTest do
   test "defbrand can be declared in a module that also defines defstruct" do
     modules =
       Code.compile_string("""
-      defmodule StructBackedTypes do
-        use ExBrand, aliases: [UserID]
+        defmodule StructBackedTypes do
+        use ExBrand
 
         defstruct [user_id: nil]
 
-        def new_struct(id), do: %__MODULE__{user_id: UserID.new!(id)}
-        def unwrap_struct(%__MODULE__{user_id: user_id}), do: UserID.unwrap(user_id)
+        def new_struct(id), do: %__MODULE__{user_id: __MODULE__.UserID.new!(id)}
+        def unwrap_struct(%__MODULE__{user_id: user_id}), do: __MODULE__.UserID.unwrap(user_id)
 
         defbrand UserID, :integer
       end
@@ -106,7 +104,7 @@ defmodule ExBrand.DSLTest do
 
   test "standalone brand definition is rejected" do
     assert_raise ArgumentError,
-                 ~r/no longer defines standalone brands/,
+                 ~r/does not accept options/,
                  fn ->
                    Code.compile_string("""
                    defmodule LegacyStandaloneBrand do
@@ -151,62 +149,13 @@ defmodule ExBrand.DSLTest do
                  end
   end
 
-  test "aliases list generates helper aliases in the parent module" do
-    assert AliasedTypes.user_id_base() == :integer
-    assert AliasedTypes.order_id_base() == :integer
-  end
-
-  test "aliases can be limited to selected brand names" do
-    assert SelectivelyAliasedTypes.user_id_base() == :integer
-  end
-
-  test "selected aliases do not expose non-listed brand names" do
-    modules =
-      capture_compile_stderr(fn ->
-        Code.compile_string("""
-        defmodule InvalidAliasSelection do
-          use ExBrand, aliases: [UserID]
-
-          defbrand UserID, :integer
-          defbrand OrderID, :integer
-
-          def order_id_base, do: OrderID.__base__()
-        end
-        """)
-      end)
-
-    {module, _bytecode} =
-      Enum.find(modules, fn {compiled_module, _bytecode} ->
-        compiled_module == InvalidAliasSelection
-      end)
-
-    assert_raise UndefinedFunctionError, fn ->
-      module.order_id_base()
-    end
-  end
-
-  test "aliases option rejects unsupported shapes" do
-    assert_raise ArgumentError,
-                 ~r/aliases must be false or a list of brand names/,
-                 fn ->
-                   Code.compile_string("""
-                   defmodule InvalidAliasesOption do
-                     use ExBrand, aliases: true
-                   end
-                   """)
-                 end
-  end
-
-  defp capture_compile_stderr(fun) do
-    parent = self()
-    ref = make_ref()
-
-    ExUnit.CaptureIO.capture_io(:stderr, fn ->
-      send(parent, {ref, fun.()})
-    end)
-
-    receive do
-      {^ref, result} -> result
+  test "use ExBrand rejects options" do
+    assert_raise ArgumentError, ~r/does not accept options/, fn ->
+      Code.compile_string("""
+      defmodule InvalidUseExBrandOption do
+        use ExBrand, aliases: [UserID]
+      end
+      """)
     end
   end
 end

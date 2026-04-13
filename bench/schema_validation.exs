@@ -35,12 +35,12 @@ defmodule ExBrand.Bench.UserSchema do
   field(:user_id, ExBrand.Bench.Types.UserID)
   field(:email, ExBrand.Bench.Types.Email)
   field(:age, {:integer, minimum: 18})
-  field(:nickname, {:string, optional: true})
-  field(:status, {:string, default: "active"})
+  field(:nickname, :string)
+  field(:status, :string)
   field(:contact_email, {ExBrand.Bench.Types.Email, field: "contactEmail"})
   field(:address, ExBrand.Bench.AddressSchema)
-  field(:tags, {[{:string, min_length: 2}], min_items: 1, unique_items: true, optional: true})
-  field(:published_at, {:string, format: :datetime, optional: true})
+  field(:tags, {[{:string, min_length: 2}], min_items: 1, unique_items: true})
+  field(:published_at, {:string, format: :datetime})
 end
 
 user_input = %{
@@ -49,6 +49,8 @@ user_input = %{
   user_id: 1,
   email: "user@example.com",
   age: 20,
+  nickname: "n",
+  status: "active",
   tags: ["elixir", "otp"],
   published_at: "2026-04-02T12:34:56Z"
 }

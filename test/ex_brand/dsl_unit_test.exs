@@ -3,28 +3,6 @@ defmodule ExBrand.DSLUnitTest do
 
   alias ExBrand.DSL
   alias ExBrand.TestSupport.CustomBases.PrefixedString
-  alias ExBrand.TestSupport.Fixtures.Types
-
-  test "normalize_aliases/1 handles false, nil, and alias lists" do
-    assert DSL.normalize_aliases(false) == []
-    assert DSL.normalize_aliases(nil) == []
-    assert DSL.normalize_aliases([Types.UserID, String]) == [Types.UserID, String]
-  end
-
-  test "normalize_aliases/1 rejects unsupported shapes" do
-    assert_raise ArgumentError, ~r/aliases must be false or a list of brand names/, fn ->
-      DSL.normalize_aliases(true)
-    end
-  end
-
-  test "build_aliases_for_parent/2 builds alias AST under the given parent" do
-    aliases = DSL.build_aliases_for_parent(Types, [:UserID, :OrderID])
-
-    assert Enum.map(aliases, &Macro.to_string/1) == [
-             "alias ExBrand.TestSupport.Fixtures.Types.UserID",
-             "alias ExBrand.TestSupport.Fixtures.Types.OrderID"
-           ]
-  end
 
   test "expand_name!/1 accepts aliases and atoms" do
     assert DSL.expand_name!({:__aliases__, [], [:Foo, :Bar]}) == Foo.Bar

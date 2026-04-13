@@ -67,7 +67,7 @@ defmodule ExBrand.Schema.Runtime do
 
   defp validate_compiled_typed_value(value, :terminal, resolved_schema, _opts) do
     case resolved_schema do
-      {:brand, module} -> module.cast(value)
+      {:brand, module} -> module.new(value)
       {:schema, module} -> module.validate(value)
       {:base, base} -> Validator.validate_schema_base(value, base)
     end
@@ -75,24 +75,17 @@ defmodule ExBrand.Schema.Runtime do
 
   defp validate_map(value, schema_fields, opts) when is_map(value) do
     mode = if fail_fast?(opts), do: :fail_fast, else: :collect_all
-    policy = if reject_extra_fields?(opts), do: :strict, else: :relaxed
     key_context = build_key_lookup_context(value)
-    validate_map_with_strategy(value, schema_fields, mode, policy, key_context)
+    validate_map_with_strategy(value, schema_fields, mode, key_context)
   end
 
   defp validate_map(_value, _schema_fields, _opts), do: {:error, :invalid_type}
 
-  defp validate_map_with_strategy(value, schema_fields, :fail_fast, :strict, key_context),
+  defp validate_map_with_strategy(value, schema_fields, :fail_fast, key_context),
     do: validate_map_strict(value, schema_fields, true, key_context)
 
-  defp validate_map_with_strategy(value, schema_fields, :collect_all, :strict, key_context),
+  defp validate_map_with_strategy(value, schema_fields, :collect_all, key_context),
     do: validate_map_strict(value, schema_fields, false, key_context)
-
-  defp validate_map_with_strategy(value, schema_fields, :fail_fast, :relaxed, key_context),
-    do: validate_map_relaxed(value, schema_fields, true, key_context)
-
-  defp validate_map_with_strategy(value, schema_fields, :collect_all, :relaxed, key_context),
-    do: validate_map_relaxed(value, schema_fields, false, key_context)
 
   defp validate_map_strict(value, schema_fields, true, key_context) do
     case Enum.reduce_while(schema_fields, {%{}, MapSet.new()}, fn {name, field_schema},
@@ -122,7 +115,7 @@ defmodule ExBrand.Schema.Runtime do
     {normalized, errors, consumed_keys} =
       Enum.reduce(schema_fields, {%{}, nil, MapSet.new()}, fn {name, field_schema},
                                                               {normalized, errors, consumed_keys} ->
-        {schema, field_opts, field_lookup, schema_without_opts} = field_metadata(field_schema)
+        {schema, _field_opts, field_lookup, _schema_without_opts} = field_metadata(field_schema)
 
         case fetch_field_value(value, field_lookup, key_context) do
           {:ok, field_value, used_key} ->
@@ -136,13 +129,7 @@ defmodule ExBrand.Schema.Runtime do
             end
 
           :missing ->
-            case resolve_missing_field(schema_without_opts, field_opts) do
-              {:ok, default_or_nil} ->
-                {Map.put(normalized, name, default_or_nil), errors, consumed_keys}
-
-              {:error, reason} ->
-                {normalized, put_error(errors, name, reason), consumed_keys}
-            end
+            {normalized, put_error(errors, name, :required), consumed_keys}
         end
       end)
 
@@ -152,7 +139,7 @@ defmodule ExBrand.Schema.Runtime do
 
   defp validate_strict_field(
          value,
-         {name, schema, field_lookup, schema_without_opts, field_opts},
+         {name, schema, field_lookup, _schema_without_opts, _field_opts},
          normalized,
          consumed_keys,
          key_context
@@ -169,13 +156,7 @@ defmodule ExBrand.Schema.Runtime do
         )
 
       :missing ->
-        validate_missing_strict_field(
-          schema_without_opts,
-          field_opts,
-          name,
-          normalized,
-          consumed_keys
-        )
+        {:halt, {:error, %{name => :required}}}
     end
   end
 
@@ -195,77 +176,6 @@ defmodule ExBrand.Schema.Runtime do
       {:error, reason} ->
         {:halt, {:error, %{name => reason}}}
     end
-  end
-
-  defp validate_missing_strict_field(
-         schema_without_opts,
-         field_opts,
-         name,
-         normalized,
-         consumed_keys
-       ) do
-    case resolve_missing_field(schema_without_opts, field_opts) do
-      {:ok, default_or_nil} ->
-        {:cont, {Map.put(normalized, name, default_or_nil), consumed_keys}}
-
-      {:error, reason} ->
-        {:halt, {:error, %{name => reason}}}
-    end
-  end
-
-  defp validate_map_relaxed(value, schema_fields, true, key_context) do
-    Enum.reduce_while(schema_fields, {:ok, %{}}, fn {name, field_schema}, {:ok, normalized} ->
-      {schema, field_opts, field_lookup, schema_without_opts} = field_metadata(field_schema)
-
-      case fetch_field_value(value, field_lookup, key_context) do
-        {:ok, field_value, _used_key} ->
-          case validate_schema(field_value, schema) do
-            {:ok, normalized_value} ->
-              {:cont, {:ok, Map.put(normalized, name, normalized_value)}}
-
-            {:error, reason} ->
-              {:halt, {:error, %{name => reason}}}
-          end
-
-        :missing ->
-          case resolve_missing_field(schema_without_opts, field_opts) do
-            {:ok, default_or_nil} ->
-              {:cont, {:ok, Map.put(normalized, name, default_or_nil)}}
-
-            {:error, reason} ->
-              {:halt, {:error, %{name => reason}}}
-          end
-      end
-    end)
-  end
-
-  defp validate_map_relaxed(value, schema_fields, false, key_context) do
-    {normalized, errors} =
-      Enum.reduce(schema_fields, {%{}, nil}, fn {name, field_schema}, {normalized, errors} ->
-        {schema, field_opts, field_lookup, schema_without_opts} = field_metadata(field_schema)
-
-        case fetch_field_value(value, field_lookup, key_context) do
-          {:ok, field_value, _used_key} ->
-            case validate_schema(field_value, schema) do
-              {:ok, normalized_value} ->
-                {Map.put(normalized, name, normalized_value), errors}
-
-              {:error, reason} ->
-                {normalized, put_error(errors, name, reason)}
-            end
-
-          :missing ->
-            case resolve_missing_field(schema_without_opts, field_opts) do
-              {:ok, default_or_nil} ->
-                {Map.put(normalized, name, default_or_nil), errors}
-
-              {:error, reason} ->
-                {normalized, put_error(errors, name, reason)}
-            end
-        end
-      end)
-
-    maybe_error_or_ok(errors, normalized)
   end
 
   defp validate_list(value, item_schema, opts) when is_list(value) do
@@ -312,10 +222,6 @@ defmodule ExBrand.Schema.Runtime do
       [] -> errors
       fields -> put_error(errors, Definition.internal_error_key(), Enum.sort(fields))
     end
-  end
-
-  defp reject_extra_fields?(opts) do
-    not (Keyword.get(opts, :tolerant, false) or Keyword.get(opts, :allow_extra_fields, false))
   end
 
   defp to_existing_atom_safe(key) when is_binary(key) do
@@ -474,20 +380,6 @@ defmodule ExBrand.Schema.Runtime do
 
   defp put_error(nil, key, reason), do: %{key => reason}
   defp put_error(errors, key, reason), do: Map.put(errors, key, reason)
-
-  @spec resolve_missing_field(term(), keyword()) :: {:ok, term()} | {:error, term()}
-  def resolve_missing_field(field_schema, field_opts) do
-    cond do
-      Keyword.has_key?(field_opts, :default) ->
-        validate_schema(Keyword.fetch!(field_opts, :default), field_schema)
-
-      Keyword.get(field_opts, :optional, false) ->
-        {:ok, nil}
-
-      true ->
-        {:error, :required}
-    end
-  end
 
   @spec extra_fields(map(), MapSet.t()) :: [term()]
   def extra_fields(value, consumed_keys) do

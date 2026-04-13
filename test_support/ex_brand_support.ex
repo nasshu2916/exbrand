@@ -145,25 +145,6 @@ defmodule ExBrand.TestSupport.Fixtures.Types do
   defbrand PositiveUserID, {:integer, validate: &(&1 > 0), error: :must_be_positive}
 end
 
-defmodule ExBrand.TestSupport.Fixtures.AliasedTypes do
-  use ExBrand, aliases: [UserID, OrderID]
-
-  defbrand UserID, :integer
-  defbrand OrderID, :integer
-
-  def user_id_base, do: UserID.__base__()
-  def order_id_base, do: OrderID.__base__()
-end
-
-defmodule ExBrand.TestSupport.Fixtures.SelectivelyAliasedTypes do
-  use ExBrand, aliases: [UserID]
-
-  defbrand UserID, :integer
-  defbrand OrderID, :integer
-
-  def user_id_base, do: UserID.__base__()
-end
-
 defmodule ExBrand.TestSupport.Fixtures.Brands do
   use ExBrand
 
@@ -203,16 +184,16 @@ defmodule ExBrand.TestSupport.Fixtures.UserSchema do
   field(:user_id, ExBrand.TestSupport.Fixtures.Types.UserID)
   field(:email, ExBrand.TestSupport.Fixtures.Types.Email)
   field(:age, {:integer, minimum: 18, error: :too_young})
-  field(:nickname, {:string, optional: true})
-  field(:status, {:string, default: "active"})
+  field(:nickname, :string)
+  field(:status, :string)
   field(:contact_email, {ExBrand.TestSupport.Fixtures.Types.Email, field: "contactEmail"})
   field(:address, ExBrand.TestSupport.Fixtures.AddressSchema)
-  field(:tags, {[{:string, min_length: 2}], min_items: 1, unique_items: true, optional: true})
-  field(:published_at, {:string, format: :datetime, optional: true})
+  field(:tags, {[{:string, min_length: 2}], min_items: 1, unique_items: true})
+  field(:published_at, {:string, format: :datetime})
 end
 
 defmodule ExBrand.TestSupport.Fixtures.TolerantUserSchema do
-  use ExBrand.Schema, tolerant: true
+  use ExBrand.Schema
 
   field(:user_id, ExBrand.TestSupport.Fixtures.Types.UserID)
 end

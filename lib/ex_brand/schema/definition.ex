@@ -5,8 +5,6 @@ defmodule ExBrand.Schema.Definition do
   alias ExBrand.Schema.Compiler
 
   @schema_option_keys [
-    :allow_extra_fields,
-    :default,
     :enum,
     :error,
     :field,
@@ -18,21 +16,17 @@ defmodule ExBrand.Schema.Definition do
     :min_length,
     :minimum,
     :nullable,
-    :optional,
-    :tolerant,
     :unique_items,
     :validate
   ]
   @generic_constraint_keys [
-    :default,
     :enum,
     :error,
     :nullable,
-    :optional,
     :field,
     :validate
   ]
-  @map_constraint_keys [:allow_extra_fields, :tolerant | @generic_constraint_keys]
+  @map_constraint_keys @generic_constraint_keys
   @list_constraint_keys [:min_items, :max_items, :unique_items | @generic_constraint_keys]
   @string_constraint_keys [:format, :min_length, :max_length | @generic_constraint_keys]
   @numeric_constraint_keys [:minimum, :maximum | @generic_constraint_keys]
@@ -47,7 +41,22 @@ defmodule ExBrand.Schema.Definition do
     binary: @string_constraint_keys
   }
 
-  @spec schema_option_keys() :: [atom(), ...]
+  @typep schema_option_key ::
+           :enum
+           | :error
+           | :field
+           | :format
+           | :max_items
+           | :max_length
+           | :maximum
+           | :min_items
+           | :min_length
+           | :minimum
+           | :nullable
+           | :unique_items
+           | :validate
+
+  @spec schema_option_keys() :: [schema_option_key(), ...]
   def schema_option_keys, do: @schema_option_keys
 
   @spec internal_error_key() :: :__extra_fields__
@@ -250,9 +259,6 @@ defmodule ExBrand.Schema.Definition do
   @spec validate_constraint_values!(keyword(), String.t()) :: :ok
   def validate_constraint_values!(opts, path) do
     Enum.each(opts, fn
-      {:default, _value} ->
-        :ok
-
       {:enum, value} when is_list(value) ->
         :ok
 
@@ -284,15 +290,6 @@ defmodule ExBrand.Schema.Definition do
         :ok
 
       {:nullable, value} when is_boolean(value) ->
-        :ok
-
-      {:optional, value} when is_boolean(value) ->
-        :ok
-
-      {:allow_extra_fields, value} when is_boolean(value) ->
-        :ok
-
-      {:tolerant, value} when is_boolean(value) ->
         :ok
 
       {:unique_items, value} when is_boolean(value) ->
@@ -357,23 +354,18 @@ defmodule ExBrand.Schema.Definition do
   @typep scalar_profile ::
            :any | :binary | :boolean | :custom_base | :integer | :null | :number | :string
   @typep map_constraint_key ::
-           :default
-           | :enum
+           :enum
            | :error
            | :field
            | :nullable
-           | :optional
-           | :tolerant
            | :validate
   @typep list_constraint_key ::
-           :default
-           | :enum
+           :enum
            | :error
            | :field
            | :max_items
            | :min_items
            | :nullable
-           | :optional
            | :unique_items
            | :validate
 
@@ -421,7 +413,7 @@ defmodule ExBrand.Schema.Definition do
   def brand_module?(module) when is_atom(module) do
     Code.ensure_loaded?(module) and
       function_exported?(module, :__meta__, 0) and
-      function_exported?(module, :cast, 1)
+      function_exported?(module, :new, 1)
   end
 
   def brand_module?(_module), do: false

@@ -12,17 +12,25 @@ defmodule ExBrand.Ecto do
   def type_for(brand), do: ExBrand.Base.ecto_type!(brand.__base__())
 
   @doc """
-  Ecto 境界の cast を ExBrand の `cast/1` に委譲する。
+  Ecto 境界の cast を ExBrand の `new/1` に委譲する。
   """
   @spec cast(module(), term()) :: {:ok, term()} | :error
   def cast(brand, value) do
+    if brand_value?(brand, value) do
+      {:ok, value}
+    else
+      cast_raw(brand, value)
+    end
+  end
+
+  defp cast_raw(brand, value) do
     case cast_via_base_type(brand, value) do
       {:ok, branded_value} ->
         {:ok, branded_value}
 
       :error ->
         brand
-        |> safe_call(fn module -> module.cast(value) end)
+        |> safe_call(fn module -> module.new(value) end)
         |> normalize_brand_result()
     end
   end
@@ -111,7 +119,7 @@ defmodule ExBrand.Ecto do
     with {:ok, normalized_value} <- cast_base_value(type_for(brand), value),
          {:ok, branded_value} <-
            brand
-           |> safe_call(fn module -> module.cast(normalized_value) end)
+           |> safe_call(fn module -> module.new(normalized_value) end)
            |> normalize_brand_result() do
       {:ok, branded_value}
     end

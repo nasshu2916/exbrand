@@ -29,31 +29,20 @@ defmodule ExBrand.Schema do
   """
   defmacro __using__(opts \\ []) do
     validate_use_opts!(opts)
-    tolerant = Keyword.get(opts, :tolerant, false)
 
-    quote bind_quoted: [tolerant: tolerant] do
+    quote do
       import ExBrand.Schema, only: [field: 2]
 
       Module.register_attribute(__MODULE__, :ex_brand_schema_fields, accumulate: true)
-      Module.put_attribute(__MODULE__, :ex_brand_schema_tolerant, tolerant)
       @before_compile ExBrand.Schema
     end
   end
 
   defp validate_use_opts!(opts) when is_list(opts) do
-    invalid_keys =
-      opts
-      |> Keyword.keys()
-      |> Enum.uniq()
-      |> Enum.reject(&(&1 in [:tolerant]))
-
-    case invalid_keys do
-      [] ->
-        :ok
-
-      keys ->
-        joined = Enum.map_join(keys, ", ", &inspect/1)
-        raise ArgumentError, "unsupported use ExBrand.Schema options: #{joined}"
+    if opts == [] do
+      :ok
+    else
+      raise ArgumentError, "use ExBrand.Schema does not accept options"
     end
   end
 
@@ -73,8 +62,6 @@ defmodule ExBrand.Schema do
 
   @doc false
   defmacro __before_compile__(env) do
-    tolerant = Module.get_attribute(env.module, :ex_brand_schema_tolerant)
-
     field_definitions =
       env.module
       |> Module.get_attribute(:ex_brand_schema_fields)
@@ -88,18 +75,18 @@ defmodule ExBrand.Schema do
       quote do
         {
           %{unquote_splicing(fields_ast)},
-          tolerant: unquote(tolerant)
+          []
         }
       end
 
     compiled_schema =
       Definition.compile_runtime_schema!({
         Map.new(field_definitions),
-        tolerant: tolerant
+        []
       })
 
     root_validator_ast =
-      Codegen.build_compiled_root_validator_ast(field_definitions, compiled_schema, tolerant)
+      Codegen.build_compiled_root_validator_ast(field_definitions, compiled_schema, false)
 
     quote do
       @doc """

@@ -31,24 +31,14 @@ defmodule ExBrand do
 
   @doc """
   ExBrand の DSL を導入する。
-
-  引数が空、もしくは `aliases:` のみの場合は DSL を import する。
   """
   defmacro __using__(opts \\ []) do
-    cond do
-      opts == [] ->
-        build_dsl_import_ast(__CALLER__.module, false)
-
-      is_list(opts) and Keyword.keyword?(opts) and Keyword.keys(opts) -- [:aliases] == [] ->
-        build_dsl_import_ast(__CALLER__.module, Keyword.get(opts, :aliases, false))
-
-      is_list(opts) and Keyword.keyword?(opts) ->
-        raise ArgumentError,
-              "`use ExBrand` only accepts the `:aliases` option; define brands with `defbrand` inside the module instead"
-
-      true ->
-        raise ArgumentError,
-              "`use ExBrand` no longer defines standalone brands; use `defbrand` inside a parent module instead"
+    if opts == [] do
+      quote do
+        import ExBrand, only: [defbrand: 2]
+      end
+    else
+      raise ArgumentError, "`use ExBrand` does not accept options"
     end
   end
 
@@ -63,21 +53,19 @@ defmodule ExBrand do
 
   @brand_option_keys [:validate, :error, :derive, :generator, :name]
 
-  defp extract_brand_spec({{base, base_opts}, brand_opts})
-       when is_list(base_opts) and is_list(brand_opts) do
-    if Keyword.keyword?(base_opts) and Keyword.keyword?(brand_opts) and
-         Enum.all?(Keyword.keys(brand_opts), &(&1 in @brand_option_keys)) do
-      {{base, base_opts}, brand_opts}
-    else
-      {{{base, base_opts}, brand_opts}, []}
-    end
+  defp extract_brand_spec({{_base, _base_opts}, _brand_opts}) do
+    raise ArgumentError,
+          "legacy nested defbrand spec is no longer supported; use `defbrand Name, {Base, base_opts ++ brand_opts}`"
   end
 
   defp extract_brand_spec({base, opts}) when is_list(opts) do
-    if Keyword.keyword?(opts) and Enum.all?(Keyword.keys(opts), &(&1 in @brand_option_keys)) do
-      {base, opts}
+    if Keyword.keyword?(opts) do
+      {brand_opts, base_opts} = Keyword.split(opts, @brand_option_keys)
+      normalized_base = if base_opts == [], do: base, else: {base, base_opts}
+      {normalized_base, brand_opts}
     else
-      {{base, opts}, []}
+      raise ArgumentError,
+            "base options must be a keyword list, got: #{inspect(opts)}"
     end
   end
 
@@ -86,21 +74,12 @@ defmodule ExBrand do
       raise ArgumentError,
             "keyword-style defbrand syntax is no longer supported; use `defbrand UserID, :integer` or `defbrand UserID, {:integer, name: ...}` instead"
     else
-      {base_or_opts, []}
+      raise ArgumentError,
+            "invalid defbrand spec: #{inspect(base_or_opts)}"
     end
   end
 
   defp extract_brand_spec(base), do: {base, []}
-
-  defp build_dsl_import_ast(parent_module, aliases) do
-    normalized_aliases = DSL.normalize_aliases(aliases)
-    alias_asts = DSL.build_aliases_for_parent(parent_module, normalized_aliases)
-
-    quote do
-      unquote_splicing(alias_asts)
-      import ExBrand, only: [defbrand: 2]
-    end
-  end
 
   defp brand_module_for(%module{} = value) when is_atom(module) do
     if function_exported?(module, :__meta__, 0) and

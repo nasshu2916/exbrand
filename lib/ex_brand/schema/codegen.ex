@@ -166,19 +166,10 @@ defmodule ExBrand.Schema.Codegen do
                 end
 
               :missing ->
-                case unquote(runtime_module).resolve_missing_field(
-                       unquote(missing_schema_ast),
-                       unquote(field_opts_ast)
-                     ) do
-                  {:ok, default_or_nil} ->
-                    {Map.put(normalized, unquote(name), default_or_nil), errors, consumed_keys}
+                next_errors =
+                  unquote(runtime_module).accumulate_error(errors, unquote(name), :required)
 
-                  {:error, reason} ->
-                    next_errors =
-                      unquote(runtime_module).accumulate_error(errors, unquote(name), reason)
-
-                    {normalized, next_errors, consumed_keys}
-                end
+                {normalized, next_errors, consumed_keys}
             end
           end
         end
@@ -245,16 +236,7 @@ defmodule ExBrand.Schema.Codegen do
                 end
 
               :missing ->
-                case unquote(runtime_module).resolve_missing_field(
-                       unquote(missing_schema_ast),
-                       unquote(field_opts_ast)
-                     ) do
-                  {:ok, default_or_nil} ->
-                    {:ok, Map.put(normalized, unquote(name), default_or_nil), consumed_keys}
-
-                  {:error, reason} ->
-                    {:error, %{unquote(name) => reason}}
-                end
+                {:error, %{unquote(name) => :required}}
             end
           end
         end

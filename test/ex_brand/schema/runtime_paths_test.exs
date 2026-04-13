@@ -29,33 +29,29 @@ defmodule ExBrand.Schema.RuntimePathsTest do
              {:error, %{__self__: :more_than_max_items}}
   end
 
-  test "map validation reports invalid input type and invalid default values" do
-    assert Schema.validate("bad", compile!({%{name: :string}, optional: true})) ==
-             {:error, :invalid_type}
-
-    assert Schema.validate(%{}, compile!({%{age: {:integer, default: "oops"}}, optional: true})) ==
-             {:error, %{age: :invalid_type}}
+  test "map validation reports invalid input type and required errors" do
+    assert Schema.validate("bad", compile!(%{name: :string})) == {:error, :invalid_type}
+    assert Schema.validate(%{}, compile!(%{age: :integer})) == {:error, %{age: :required}}
   end
 
   test "field lookup supports atom and string aliases and ignores consumed duplicate keys" do
-    schema = compile!({%{email: {:string, field: "contactEmail"}}, tolerant: false})
+    schema = compile!(%{email: {:string, field: "contactEmail"}})
 
     assert Schema.validate(%{"contactEmail" => "a@example.com", contactEmail: "ignored"}, schema) ==
              {:error, %{__extra_fields__: [:contactEmail]}}
   end
 
   test "field lookup supports string field names backed by atom keys" do
-    schema = compile!({%{email: {:string, field: "contactEmail"}}, tolerant: false})
+    schema = compile!(%{email: {:string, field: "contactEmail"}})
 
     assert Schema.validate(%{contactEmail: "a@example.com"}, schema) ==
              {:ok, %{email: "a@example.com"}}
   end
 
-  test "allow_extra_fields skips extra-field rejection for map schema" do
-    schema = compile!({%{email: :string}, allow_extra_fields: true})
-
-    assert Schema.validate(%{email: "a@example.com", unknown: "value"}, schema) ==
-             {:ok, %{email: "a@example.com"}}
+  test "allow_extra_fields is rejected at compile time" do
+    assert_raise ArgumentError, fn -> compile!({%{email: :string}, allow_extra_fields: true}) end
+    assert_raise ArgumentError, fn -> compile!({%{email: :string}, tolerant: true}) end
+    assert_raise ArgumentError, fn -> compile!({%{email: :string}, optional: true}) end
   end
 
   test "fail_fast stops map validation at the first field error" do
@@ -115,7 +111,7 @@ defmodule ExBrand.Schema.RuntimePathsTest do
     schema =
       {%{
          address: {AddressSchema, validate: fn value -> {:ok, Map.put(value, :zip, "53000")} end}
-       }, optional: true}
+       }, []}
       |> compile!()
 
     assert Schema.validate(%{address: %{city: "Osaka", zip: "12345"}}, schema) ==
