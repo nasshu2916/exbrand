@@ -12,7 +12,7 @@ defmodule ExBrand.EctoTest do
 
   test "cast/load/dump normalize failures to :error" do
     assert Ecto.cast(Types.UserID, 1) == {:ok, Types.UserID.new!(1)}
-    assert Ecto.cast(Types.UserID, "1") == :error
+    assert Ecto.cast(Types.UserID, "1") == expected_user_id_cast_result()
 
     assert Ecto.load(Types.UserID, 1) == {:ok, Types.UserID.new!(1)}
     assert Ecto.load(Types.UserID, "1") == :error
@@ -40,7 +40,7 @@ defmodule ExBrand.EctoTest do
   test "equal?/3 compares values through brand casts" do
     assert Ecto.equal?(Types.UserID, 1, Types.UserID.new!(1))
     refute Ecto.equal?(Types.UserID, 1, 2)
-    refute Ecto.equal?(Types.UserID, 1, "1")
+    assert Ecto.equal?(Types.UserID, 1, "1") == ecto_type_available?()
   end
 
   test "dump/2 returns :error for forged brand values" do
@@ -82,5 +82,17 @@ defmodule ExBrand.EctoTest do
         Application.put_env(:ex_brand, :signature_verification, previous_value)
       end
     end
+  end
+
+  defp expected_user_id_cast_result do
+    if ecto_type_available?() do
+      {:ok, Types.UserID.new!(1)}
+    else
+      :error
+    end
+  end
+
+  defp ecto_type_available? do
+    Code.ensure_loaded?(Ecto.Type) and function_exported?(Ecto.Type, :cast, 2)
   end
 end

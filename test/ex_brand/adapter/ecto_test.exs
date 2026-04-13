@@ -13,7 +13,13 @@ defmodule ExBrand.Adapter.EctoTest do
   test "ecto type adapter casts raw values into brands" do
     assert {:ok, user_id} = Types.UserID.EctoType.cast(1)
     assert Types.UserID.unwrap(user_id) == 1
-    assert Types.UserID.EctoType.cast("1") == :error
+
+    if ecto_type_available?() do
+      assert {:ok, user_id_from_string} = Types.UserID.EctoType.cast("1")
+      assert Types.UserID.unwrap(user_id_from_string) == 1
+    else
+      assert Types.UserID.EctoType.cast("1") == :error
+    end
   end
 
   test "ecto type adapter loads raw values into brands" do
@@ -37,7 +43,7 @@ defmodule ExBrand.Adapter.EctoTest do
     assert PrefixedUserID.EctoType.type() == :string
     assert Types.UserID.EctoType.equal?(1, Types.UserID.new!(1))
     refute Types.UserID.EctoType.equal?(1, 2)
-    refute Types.UserID.EctoType.equal?(1, "1")
+    assert Types.UserID.EctoType.equal?(1, "1") == ecto_type_available?()
   end
 
   test "ecto parameterized type adapter casts and reports base type" do
@@ -45,7 +51,13 @@ defmodule ExBrand.Adapter.EctoTest do
     assert Types.UserID.EctoParameterizedType.type([]) == :integer
     assert {:ok, user_id} = Types.UserID.EctoParameterizedType.cast(1, [])
     assert Types.UserID.unwrap(user_id) == 1
-    assert Types.UserID.EctoParameterizedType.cast("1", []) == :error
+
+    if ecto_type_available?() do
+      assert {:ok, user_id_from_string} = Types.UserID.EctoParameterizedType.cast("1", [])
+      assert Types.UserID.unwrap(user_id_from_string) == 1
+    else
+      assert Types.UserID.EctoParameterizedType.cast("1", []) == :error
+    end
   end
 
   test "ecto parameterized type adapter loads and dumps through callbacks" do
@@ -70,5 +82,9 @@ defmodule ExBrand.Adapter.EctoTest do
     assert {:ok, user_id} = PrefixedUserID.EctoType.cast("usr_1")
     assert PrefixedUserID.unwrap(user_id) == "usr_1"
     assert PrefixedUserID.EctoType.cast("1") == :error
+  end
+
+  defp ecto_type_available? do
+    Code.ensure_loaded?(Ecto.Type) and function_exported?(Ecto.Type, :cast, 2)
   end
 end

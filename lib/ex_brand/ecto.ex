@@ -16,9 +16,15 @@ defmodule ExBrand.Ecto do
   """
   @spec cast(module(), term()) :: {:ok, term()} | :error
   def cast(brand, value) do
-    brand
-    |> safe_call(fn module -> module.cast(value) end)
-    |> normalize_brand_result()
+    case cast_via_base_type(brand, value) do
+      {:ok, branded_value} ->
+        {:ok, branded_value}
+
+      :error ->
+        brand
+        |> safe_call(fn module -> module.cast(value) end)
+        |> normalize_brand_result()
+    end
   end
 
   @doc """
@@ -100,4 +106,24 @@ defmodule ExBrand.Ecto do
   defp normalize_brand_result({:ok, brand}), do: {:ok, brand}
   defp normalize_brand_result({:error, _reason}), do: :error
   defp normalize_brand_result(:error), do: :error
+
+  defp cast_via_base_type(brand, value) do
+    with {:ok, normalized_value} <- cast_base_value(type_for(brand), value),
+         {:ok, branded_value} <-
+           brand
+           |> safe_call(fn module -> module.cast(normalized_value) end)
+           |> normalize_brand_result() do
+      {:ok, branded_value}
+    end
+  end
+
+  defp cast_base_value(type, value) do
+    ecto_type_module = :"Elixir.Ecto.Type"
+
+    if Code.ensure_loaded?(ecto_type_module) and function_exported?(ecto_type_module, :cast, 2) do
+      :erlang.apply(ecto_type_module, :cast, [type, value])
+    else
+      :error
+    end
+  end
 end
