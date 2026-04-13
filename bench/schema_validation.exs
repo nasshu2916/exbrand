@@ -53,7 +53,7 @@ user_input = %{
   published_at: "2026-04-02T12:34:56Z"
 }
 
-raw_schema = ExBrand.Bench.UserSchema.__schema__()
+compiled_schema = ExBrand.Bench.UserSchema.__schema__() |> ExBrand.Schema.compile!()
 user_id = 1
 email = "user@example.com"
 
@@ -99,9 +99,9 @@ Benchee.run(
         {:ok, _result} = ExBrand.Bench.UserSchema.validate(user_input)
       end)
     end,
-    "raw schema validate/2" => fn ->
+    "compiled schema validate/2" => fn ->
       Enum.each(1..ExBrand.Bench.Config.iterations(), fn _ ->
-        {:ok, _result} = ExBrand.Schema.validate(user_input, raw_schema)
+        {:ok, _result} = ExBrand.Schema.validate(user_input, compiled_schema)
       end)
     end
   },

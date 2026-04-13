@@ -2,15 +2,20 @@ defmodule ExBrand.Schema.Runtime do
   @moduledoc false
 
   alias ExBrand.Schema.Definition
+  alias ExBrand.Schema.Runtime.Config
   alias ExBrand.Validator
 
   @spec validate(term(), term()) :: {:ok, term()} | {:error, term()}
-  def validate(value, schema), do: validate_schema(value, schema)
+  def validate(value, schema), do: with_runtime_config(fn -> validate_schema(value, schema) end)
+
+  @spec with_runtime_config((-> term())) :: term()
+  def with_runtime_config(fun) when is_function(fun, 0), do: Config.with_runtime_config(fun)
 
   @spec validate_compiled_root(term(), :map | :list | :terminal, term(), keyword()) ::
           {:ok, term()} | {:error, term()}
-  def validate_compiled_root(value, kind, data, opts),
-    do: validate_compiled(value, kind, data, opts)
+  def validate_compiled_root(value, kind, data, opts) do
+    with_runtime_config(fn -> validate_compiled(value, kind, data, opts) end)
+  end
 
   @type key_lookup_context() :: %{String.t() => atom()}
 
@@ -97,17 +102,25 @@ defmodule ExBrand.Schema.Runtime do
   end
 
   defp validate_map(value, schema_fields, opts) when is_map(value) do
-    fail_fast = fail_fast?(opts)
+    mode = if fail_fast?(opts), do: :fail_fast, else: :collect_all
+    policy = if reject_extra_fields?(opts), do: :strict, else: :relaxed
     key_context = build_key_lookup_context(value)
-
-    if reject_extra_fields?(opts) do
-      validate_map_strict(value, schema_fields, fail_fast, key_context)
-    else
-      validate_map_relaxed(value, schema_fields, fail_fast, key_context)
-    end
+    validate_map_with_strategy(value, schema_fields, mode, policy, key_context)
   end
 
   defp validate_map(_value, _schema_fields, _opts), do: {:error, :invalid_type}
+
+  defp validate_map_with_strategy(value, schema_fields, :fail_fast, :strict, key_context),
+    do: validate_map_strict(value, schema_fields, true, key_context)
+
+  defp validate_map_with_strategy(value, schema_fields, :collect_all, :strict, key_context),
+    do: validate_map_strict(value, schema_fields, false, key_context)
+
+  defp validate_map_with_strategy(value, schema_fields, :fail_fast, :relaxed, key_context),
+    do: validate_map_relaxed(value, schema_fields, true, key_context)
+
+  defp validate_map_with_strategy(value, schema_fields, :collect_all, :relaxed, key_context),
+    do: validate_map_relaxed(value, schema_fields, false, key_context)
 
   defp validate_map_strict(value, schema_fields, true, key_context) do
     case Enum.reduce_while(schema_fields, {%{}, MapSet.new()}, fn {name, field_schema},
@@ -408,20 +421,11 @@ defmodule ExBrand.Schema.Runtime do
 
   @spec schema_fail_fast_enabled?() :: boolean()
   def schema_fail_fast_enabled? do
-    case Application.get_env(:ex_brand, :schema_fail_fast, false) do
-      true -> true
-      false -> false
-      _other -> false
-    end
+    Config.schema_fail_fast_enabled?()
   end
 
   @spec schema_deferred_checks() :: MapSet.t(atom())
-  def schema_deferred_checks do
-    Application.get_env(:ex_brand, :schema_deferred_checks, [])
-    |> List.wrap()
-    |> Enum.filter(&(&1 in [:enum, :format, :regex, :unique_items, :deep_nested]))
-    |> MapSet.new()
-  end
+  def schema_deferred_checks, do: Config.schema_deferred_checks()
 
   defp check_deferred?(check) do
     MapSet.member?(schema_deferred_checks(), check)
@@ -603,8 +607,10 @@ defmodule ExBrand.Schema.Runtime do
   @spec extra_fields(map(), MapSet.t()) :: [term()]
   def extra_fields(value, consumed_keys) do
     value
-    |> Map.keys()
-    |> Enum.reject(&MapSet.member?(consumed_keys, &1))
+    |> Enum.reduce([], fn {key, _value}, acc ->
+      if MapSet.member?(consumed_keys, key), do: acc, else: [key | acc]
+    end)
+    |> Enum.reverse()
   end
 
   defp validate_list_items_fail_fast(value, item_schema) do
@@ -749,7 +755,7 @@ defmodule ExBrand.Schema.Runtime do
       :ok
     else
       if :unique_items in checks do
-        if Enum.uniq(items) == items, do: :ok, else: {:error, :items_not_unique}
+        if unique_items?(items), do: :ok, else: {:error, :items_not_unique}
       else
         :ok
       end
@@ -943,10 +949,20 @@ defmodule ExBrand.Schema.Runtime do
       :ok
     else
       case Keyword.get(opts, :unique_items, false) do
-        true -> if Enum.uniq(items) == items, do: :ok, else: {:error, :items_not_unique}
+        true -> if unique_items?(items), do: :ok, else: {:error, :items_not_unique}
         false -> :ok
         _other -> {:error, :invalid_schema}
       end
     end
+  end
+
+  defp unique_items?(items) do
+    Enum.reduce_while(items, MapSet.new(), fn item, seen ->
+      if MapSet.member?(seen, item) do
+        {:halt, false}
+      else
+        {:cont, MapSet.put(seen, item)}
+      end
+    end) != false
   end
 end

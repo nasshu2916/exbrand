@@ -122,7 +122,9 @@ defmodule ExBrand.SchemaTest do
   end
 
   test "schema supports inline map schema" do
-    schema = {%{name: {:string, min_length: 1}, age: {:integer, minimum: 18}}, tolerant: false}
+    schema =
+      {%{name: {:string, min_length: 1}, age: {:integer, minimum: 18}}, tolerant: false}
+      |> ExBrand.Schema.compile!()
 
     assert {:ok, %{name: "naoya", age: 20}} =
              ExBrand.Schema.validate(%{name: "naoya", age: 20}, schema)
@@ -132,7 +134,9 @@ defmodule ExBrand.SchemaTest do
   end
 
   test "schema supports direct list schema" do
-    schema = {[{:integer, minimum: 1}], min_items: 2, unique_items: true}
+    schema =
+      {[{:integer, minimum: 1}], min_items: 2, unique_items: true}
+      |> ExBrand.Schema.compile!()
 
     assert {:ok, [1, 2]} = ExBrand.Schema.validate([1, 2], schema)
 
@@ -141,14 +145,19 @@ defmodule ExBrand.SchemaTest do
   end
 
   test "schema supports scalar bases handled by the shared validator" do
-    assert {:ok, true} = ExBrand.Schema.validate(true, :boolean)
-    assert {:ok, 1.5} = ExBrand.Schema.validate(1.5, :number)
-    assert {:ok, nil} = ExBrand.Schema.validate(nil, :null)
-    assert {:ok, %{raw: "value"}} = ExBrand.Schema.validate(%{raw: "value"}, :any)
+    boolean_schema = ExBrand.Schema.compile!(:boolean)
+    number_schema = ExBrand.Schema.compile!(:number)
+    null_schema = ExBrand.Schema.compile!(:null)
+    any_schema = ExBrand.Schema.compile!(:any)
 
-    assert {:error, :invalid_type} = ExBrand.Schema.validate("true", :boolean)
-    assert {:error, :invalid_type} = ExBrand.Schema.validate("1.5", :number)
-    assert {:error, :invalid_type} = ExBrand.Schema.validate("nil", :null)
+    assert {:ok, true} = ExBrand.Schema.validate(true, boolean_schema)
+    assert {:ok, 1.5} = ExBrand.Schema.validate(1.5, number_schema)
+    assert {:ok, nil} = ExBrand.Schema.validate(nil, null_schema)
+    assert {:ok, %{raw: "value"}} = ExBrand.Schema.validate(%{raw: "value"}, any_schema)
+
+    assert {:error, :invalid_type} = ExBrand.Schema.validate("true", boolean_schema)
+    assert {:error, :invalid_type} = ExBrand.Schema.validate("1.5", number_schema)
+    assert {:error, :invalid_type} = ExBrand.Schema.validate("nil", null_schema)
   end
 
   test "schema custom validator can normalize values through the shared validator flow" do
@@ -157,6 +166,7 @@ defmodule ExBrand.SchemaTest do
        validate: fn value ->
          {:ok, String.trim(value)}
        end}
+      |> ExBrand.Schema.compile!()
 
     assert {:ok, "naoya"} = ExBrand.Schema.validate("  naoya  ", schema)
   end

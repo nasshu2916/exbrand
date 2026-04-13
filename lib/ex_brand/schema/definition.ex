@@ -2,6 +2,7 @@ defmodule ExBrand.Schema.Definition do
   @moduledoc false
 
   alias ExBrand.Base
+  alias ExBrand.Schema.Compiler
 
   @field_alias_keys [:required, :from]
   @schema_option_keys [
@@ -95,6 +96,12 @@ defmodule ExBrand.Schema.Definition do
 
   @spec compile_runtime_schema!(term()) :: runtime_node()
   def compile_runtime_schema!(schema) do
+    Compiler.validate_schema_definition!(schema, "schema")
+    compile_runtime_schema_unchecked!(schema)
+  end
+
+  @spec compile_runtime_schema_unchecked!(term()) :: runtime_node()
+  defp compile_runtime_schema_unchecked!(schema) do
     {base_schema, opts} = split_schema_opts(schema)
 
     cond do
@@ -109,7 +116,7 @@ defmodule ExBrand.Schema.Definition do
       is_list(base_schema) ->
         case base_schema do
           [item_schema] ->
-            {:compiled, :list, compile_runtime_schema!(item_schema),
+            {:compiled, :list, compile_runtime_schema_unchecked!(item_schema),
              attach_runtime_metadata(base_schema, opts)}
 
           _ ->
@@ -137,11 +144,11 @@ defmodule ExBrand.Schema.Definition do
   @spec compile_runtime_field!(atom(), term()) :: runtime_field()
   def compile_runtime_field!(name, field_schema) when is_atom(name) do
     {field_base_schema, opts} = split_schema_opts(field_schema)
-    compiled_schema = compile_runtime_schema!(field_schema)
+    compiled_schema = compile_runtime_schema_unchecked!(field_schema)
 
     %{
       schema: compiled_schema,
-      schema_without_opts: compile_runtime_schema!(field_base_schema),
+      schema_without_opts: compile_runtime_schema_unchecked!(field_base_schema),
       opts: opts,
       lookup: compile_field_lookup(name, opts)
     }
