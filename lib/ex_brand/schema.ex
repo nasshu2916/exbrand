@@ -86,7 +86,7 @@ defmodule ExBrand.Schema do
       })
 
     root_validator_ast =
-      Codegen.build_compiled_root_validator_ast(field_definitions, compiled_schema, false)
+      Codegen.build_compiled_root_validator_ast(field_definitions, compiled_schema)
 
     quote do
       @doc """

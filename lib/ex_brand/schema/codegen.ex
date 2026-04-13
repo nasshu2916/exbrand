@@ -3,24 +3,22 @@ defmodule ExBrand.Schema.Codegen do
 
   alias ExBrand.Schema.{Definition, Runtime}
 
-  @spec build_compiled_root_validator_ast([{atom(), term()}], term(), boolean()) :: Macro.t()
+  @spec build_compiled_root_validator_ast([{atom(), term()}], term()) :: Macro.t()
   def build_compiled_root_validator_ast(
         field_definitions,
-        {:compiled, :map, compiled_fields, _opts},
-        tolerant
+        {:compiled, :map, compiled_fields, _opts}
       ) do
     ordered_compiled_fields =
       Enum.map(field_definitions, fn {name, _schema} ->
         {name, Map.fetch!(compiled_fields, name)}
       end)
 
-    build_compiled_map_validator_ast(ordered_compiled_fields, tolerant)
+    build_compiled_map_validator_ast(ordered_compiled_fields)
   end
 
   def build_compiled_root_validator_ast(
         _field_definitions,
-        {:compiled, kind, data, opts},
-        _tolerant
+        {:compiled, kind, data, opts}
       ) do
     runtime_module = Runtime
 
@@ -36,7 +34,7 @@ defmodule ExBrand.Schema.Codegen do
     end
   end
 
-  defp build_compiled_map_validator_ast(ordered_compiled_fields, tolerant) do
+  defp build_compiled_map_validator_ast(ordered_compiled_fields) do
     runtime_module = Runtime
 
     field_plans =
@@ -47,7 +45,7 @@ defmodule ExBrand.Schema.Codegen do
         fail_name = String.to_atom("__validate_field_fail_#{index}__")
 
         {collect_def, fail_def} =
-          build_collect_and_fail_field_defs(name, field, collect_name, fail_name, tolerant)
+          build_collect_and_fail_field_defs(name, field, collect_name, fail_name)
 
         %{
           collect_def: collect_def,
@@ -62,8 +60,8 @@ defmodule ExBrand.Schema.Codegen do
     fail_field_defs = Enum.map(field_plans, & &1.fail_def)
     fail_field_fun_names = Enum.map(field_plans, & &1.fail_name)
 
-    collect_root_ast = build_map_collect_root_ast(collect_field_fun_names, tolerant)
-    fail_root_ast = build_map_fail_root_ast(fail_field_fun_names, tolerant)
+    collect_root_ast = build_map_collect_root_ast(collect_field_fun_names)
+    fail_root_ast = build_map_fail_root_ast(fail_field_fun_names)
 
     quote do
       unquote_splicing(collect_field_defs)
@@ -81,7 +79,7 @@ defmodule ExBrand.Schema.Codegen do
     end
   end
 
-  defp build_collect_and_fail_field_defs(name, field, collect_name, fail_name, tolerant) do
+  defp build_collect_and_fail_field_defs(name, field, collect_name, fail_name) do
     runtime_module = Runtime
 
     %{
@@ -92,152 +90,70 @@ defmodule ExBrand.Schema.Codegen do
     } = field
 
     {schema_kind, schema_data_ast, schema_opts_ast} = compiled_parts(schema)
-    missing_schema_ast = Macro.escape(schema_without_opts)
     lookup_ast = Macro.escape(lookup)
-    field_opts_ast = Macro.escape(field_opts)
+    _ = schema_without_opts
+    _ = field_opts
 
     collect_ast =
-      if tolerant do
-        quote do
-          defp unquote(collect_name)(params, key_context, normalized, errors) do
-            case unquote(runtime_module).fetch_compiled_field_value(
-                   params,
-                   unquote(lookup_ast),
-                   key_context
-                 ) do
-              {:ok, field_value, _used_key} ->
-                case unquote(runtime_module).validate_compiled_nested(
-                       field_value,
-                       unquote(schema_kind),
-                       unquote(schema_data_ast),
-                       unquote(schema_opts_ast)
-                     ) do
-                  {:ok, normalized_value} ->
-                    {Map.put(normalized, unquote(name), normalized_value), errors}
+      quote do
+        defp unquote(collect_name)(params, key_context, normalized, errors, consumed_keys) do
+          case unquote(runtime_module).fetch_compiled_field_value(
+                 params,
+                 unquote(lookup_ast),
+                 key_context
+               ) do
+            {:ok, field_value, used_key} ->
+              case unquote(runtime_module).validate_compiled_nested(
+                     field_value,
+                     unquote(schema_kind),
+                     unquote(schema_data_ast),
+                     unquote(schema_opts_ast)
+                   ) do
+                {:ok, normalized_value} ->
+                  {Map.put(normalized, unquote(name), normalized_value), errors,
+                   MapSet.put(consumed_keys, used_key)}
 
-                  {:error, reason} ->
-                    next_errors =
-                      unquote(runtime_module).accumulate_error(errors, unquote(name), reason)
+                {:error, reason} ->
+                  next_errors =
+                    unquote(runtime_module).accumulate_error(errors, unquote(name), reason)
 
-                    {normalized, next_errors}
-                end
+                  {normalized, next_errors, MapSet.put(consumed_keys, used_key)}
+              end
 
-              :missing ->
-                case unquote(runtime_module).resolve_missing_field(
-                       unquote(missing_schema_ast),
-                       unquote(field_opts_ast)
-                     ) do
-                  {:ok, default_or_nil} ->
-                    {Map.put(normalized, unquote(name), default_or_nil), errors}
+            :missing ->
+              next_errors =
+                unquote(runtime_module).accumulate_error(errors, unquote(name), :required)
 
-                  {:error, reason} ->
-                    next_errors =
-                      unquote(runtime_module).accumulate_error(errors, unquote(name), reason)
-
-                    {normalized, next_errors}
-                end
-            end
-          end
-        end
-      else
-        quote do
-          defp unquote(collect_name)(params, key_context, normalized, errors, consumed_keys) do
-            case unquote(runtime_module).fetch_compiled_field_value(
-                   params,
-                   unquote(lookup_ast),
-                   key_context
-                 ) do
-              {:ok, field_value, used_key} ->
-                case unquote(runtime_module).validate_compiled_nested(
-                       field_value,
-                       unquote(schema_kind),
-                       unquote(schema_data_ast),
-                       unquote(schema_opts_ast)
-                     ) do
-                  {:ok, normalized_value} ->
-                    {Map.put(normalized, unquote(name), normalized_value), errors,
-                     MapSet.put(consumed_keys, used_key)}
-
-                  {:error, reason} ->
-                    next_errors =
-                      unquote(runtime_module).accumulate_error(errors, unquote(name), reason)
-
-                    {normalized, next_errors, MapSet.put(consumed_keys, used_key)}
-                end
-
-              :missing ->
-                next_errors =
-                  unquote(runtime_module).accumulate_error(errors, unquote(name), :required)
-
-                {normalized, next_errors, consumed_keys}
-            end
+              {normalized, next_errors, consumed_keys}
           end
         end
       end
 
     fail_ast =
-      if tolerant do
-        quote do
-          defp unquote(fail_name)(params, key_context, normalized) do
-            case unquote(runtime_module).fetch_compiled_field_value(
-                   params,
-                   unquote(lookup_ast),
-                   key_context
-                 ) do
-              {:ok, field_value, _used_key} ->
-                case unquote(runtime_module).validate_compiled_nested(
-                       field_value,
-                       unquote(schema_kind),
-                       unquote(schema_data_ast),
-                       unquote(schema_opts_ast)
-                     ) do
-                  {:ok, normalized_value} ->
-                    {:ok, Map.put(normalized, unquote(name), normalized_value)}
+      quote do
+        defp unquote(fail_name)(params, key_context, normalized, consumed_keys) do
+          case unquote(runtime_module).fetch_compiled_field_value(
+                 params,
+                 unquote(lookup_ast),
+                 key_context
+               ) do
+            {:ok, field_value, used_key} ->
+              case unquote(runtime_module).validate_compiled_nested(
+                     field_value,
+                     unquote(schema_kind),
+                     unquote(schema_data_ast),
+                     unquote(schema_opts_ast)
+                   ) do
+                {:ok, normalized_value} ->
+                  {:ok, Map.put(normalized, unquote(name), normalized_value),
+                   MapSet.put(consumed_keys, used_key)}
 
-                  {:error, reason} ->
-                    {:error, %{unquote(name) => reason}}
-                end
+                {:error, reason} ->
+                  {:error, %{unquote(name) => reason}}
+              end
 
-              :missing ->
-                case unquote(runtime_module).resolve_missing_field(
-                       unquote(missing_schema_ast),
-                       unquote(field_opts_ast)
-                     ) do
-                  {:ok, default_or_nil} ->
-                    {:ok, Map.put(normalized, unquote(name), default_or_nil)}
-
-                  {:error, reason} ->
-                    {:error, %{unquote(name) => reason}}
-                end
-            end
-          end
-        end
-      else
-        quote do
-          defp unquote(fail_name)(params, key_context, normalized, consumed_keys) do
-            case unquote(runtime_module).fetch_compiled_field_value(
-                   params,
-                   unquote(lookup_ast),
-                   key_context
-                 ) do
-              {:ok, field_value, used_key} ->
-                case unquote(runtime_module).validate_compiled_nested(
-                       field_value,
-                       unquote(schema_kind),
-                       unquote(schema_data_ast),
-                       unquote(schema_opts_ast)
-                     ) do
-                  {:ok, normalized_value} ->
-                    {:ok, Map.put(normalized, unquote(name), normalized_value),
-                     MapSet.put(consumed_keys, used_key)}
-
-                  {:error, reason} ->
-                    {:error, %{unquote(name) => reason}}
-                end
-
-              :missing ->
-                {:error, %{unquote(name) => :required}}
-            end
+            :missing ->
+              {:error, %{unquote(name) => :required}}
           end
         end
       end
@@ -245,30 +161,7 @@ defmodule ExBrand.Schema.Codegen do
     {collect_ast, fail_ast}
   end
 
-  defp build_map_collect_root_ast(field_fun_names, true) do
-    runtime_module = Runtime
-
-    step_asts =
-      Enum.map(field_fun_names, fn field_fun_name ->
-        quote do
-          {normalized, errors} = unquote(field_fun_name)(params, key_context, normalized, errors)
-        end
-      end)
-
-    quote do
-      defp __validate_root_map_collect__(params) when is_map(params) do
-        key_context = unquote(runtime_module).build_key_lookup_context(params)
-        {normalized, errors} = {%{}, nil}
-        unquote_splicing(step_asts)
-
-        if is_nil(errors), do: {:ok, normalized}, else: {:error, errors}
-      end
-
-      defp __validate_root_map_collect__(_params), do: {:error, :invalid_type}
-    end
-  end
-
-  defp build_map_collect_root_ast(field_fun_names, false) do
+  defp build_map_collect_root_ast(field_fun_names) do
     runtime_module = Runtime
     definition_module = Definition
 
@@ -305,40 +198,7 @@ defmodule ExBrand.Schema.Codegen do
     end
   end
 
-  defp build_map_fail_root_ast(field_fun_names, true) do
-    runtime_module = Runtime
-
-    chain_ast =
-      case field_fun_names do
-        [] ->
-          quote(do: {:ok, %{}})
-
-        [first_fun_name | rest_fun_names] ->
-          Enum.reduce(
-            rest_fun_names,
-            quote(do: unquote(first_fun_name)(params, key_context, %{})),
-            fn field_fun_name, acc_ast ->
-              quote do
-                case unquote(acc_ast) do
-                  {:ok, normalized} -> unquote(field_fun_name)(params, key_context, normalized)
-                  {:error, reason} -> {:error, reason}
-                end
-              end
-            end
-          )
-      end
-
-    quote do
-      defp __validate_root_map_fail_fast__(params) when is_map(params) do
-        key_context = unquote(runtime_module).build_key_lookup_context(params)
-        unquote(chain_ast)
-      end
-
-      defp __validate_root_map_fail_fast__(_params), do: {:error, :invalid_type}
-    end
-  end
-
-  defp build_map_fail_root_ast(field_fun_names, false) do
+  defp build_map_fail_root_ast(field_fun_names) do
     runtime_module = Runtime
     definition_module = Definition
 
