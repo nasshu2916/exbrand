@@ -105,8 +105,7 @@ defmodule ExBrand.Schema do
       入力値を schema 定義に従って検証し、正規化済みの値を返す。
       """
       @spec validate(term()) :: {:ok, term()} | {:error, term()}
-      def validate(params),
-        do: Runtime.with_runtime_config(fn -> __validate_compiled_root__(params) end)
+      def validate(params), do: __validate_compiled_root__(params)
 
       @doc """
       `validate/1` の bang 版。
@@ -156,4 +155,15 @@ defmodule ExBrand.Schema do
               "invalid schema value for #{inspect(module)}: #{inspect(reason)}"
     end
   end
+
+  @doc """
+  `:schema_fail_fast` と `:schema_deferred_checks` のランタイム設定を更新して反映する。
+
+  指定可能なオプション:
+
+  - `:fail_fast`
+  - `:deferred_checks`
+  """
+  @spec set_runtime_config!(keyword()) :: ExBrand.Schema.Runtime.Config.t()
+  def set_runtime_config!(opts), do: Runtime.set_runtime_config!(opts)
 end

@@ -280,11 +280,11 @@ defmodule ExBrand.SchemaTest do
     previous_value = Application.get_env(:ex_brand, :schema_fail_fast)
     on_exit(fn -> restore_schema_fail_fast(previous_value) end)
 
-    Application.put_env(:ex_brand, :schema_fail_fast, true)
+    ExBrand.Schema.set_runtime_config!(fail_fast: true)
     assert {:error, errors} = UserSchema.validate(%{age: 10, email: "invalid"})
     assert map_size(errors) == 1
 
-    Application.put_env(:ex_brand, :schema_fail_fast, false)
+    ExBrand.Schema.set_runtime_config!(fail_fast: false)
 
     assert {:error, errors} = UserSchema.validate(%{age: 10, email: "invalid"})
 
@@ -316,22 +316,27 @@ defmodule ExBrand.SchemaTest do
     previous_value = Application.get_env(:ex_brand, :schema_deferred_checks)
     on_exit(fn -> restore_schema_deferred_checks(previous_value) end)
 
-    Application.put_env(:ex_brand, :schema_deferred_checks, [])
+    ExBrand.Schema.set_runtime_config!(deferred_checks: [])
 
     assert module.validate(%{scores: [0]}) == {:error, %{scores: %{0 => :less_than_minimum}}}
 
-    Application.put_env(:ex_brand, :schema_deferred_checks, [:deep_nested])
+    ExBrand.Schema.set_runtime_config!(deferred_checks: [:deep_nested])
     assert module.validate(%{scores: [0]}) == {:ok, %{scores: [0]}}
   end
 
-  defp restore_schema_fail_fast(nil), do: Application.delete_env(:ex_brand, :schema_fail_fast)
+  defp restore_schema_fail_fast(nil) do
+    ExBrand.Schema.set_runtime_config!(fail_fast: :unset)
+  end
 
-  defp restore_schema_fail_fast(value),
-    do: Application.put_env(:ex_brand, :schema_fail_fast, value)
+  defp restore_schema_fail_fast(value) do
+    ExBrand.Schema.set_runtime_config!(fail_fast: value)
+  end
 
-  defp restore_schema_deferred_checks(nil),
-    do: Application.delete_env(:ex_brand, :schema_deferred_checks)
+  defp restore_schema_deferred_checks(nil) do
+    ExBrand.Schema.set_runtime_config!(deferred_checks: :unset)
+  end
 
-  defp restore_schema_deferred_checks(value),
-    do: Application.put_env(:ex_brand, :schema_deferred_checks, value)
+  defp restore_schema_deferred_checks(value) do
+    ExBrand.Schema.set_runtime_config!(deferred_checks: value)
+  end
 end

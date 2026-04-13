@@ -57,7 +57,7 @@ defmodule ExBrand.Schema.RuntimePathsTest do
   test "fail_fast stops map validation at the first field error" do
     previous_value = Application.get_env(:ex_brand, :schema_fail_fast)
     on_exit(fn -> restore_schema_fail_fast(previous_value) end)
-    Application.put_env(:ex_brand, :schema_fail_fast, true)
+    Schema.set_runtime_config!(fail_fast: true)
 
     schema = compile!(%{age: {:integer, minimum: 18}, email: {:string, format: :email}})
 
@@ -72,7 +72,7 @@ defmodule ExBrand.Schema.RuntimePathsTest do
   test "fail_fast false accumulates map field errors" do
     previous_value = Application.get_env(:ex_brand, :schema_fail_fast)
     on_exit(fn -> restore_schema_fail_fast(previous_value) end)
-    Application.put_env(:ex_brand, :schema_fail_fast, false)
+    Schema.set_runtime_config!(fail_fast: false)
 
     schema = compile!(%{age: {:integer, minimum: 18}, email: {:string, format: :email}})
 
@@ -83,7 +83,7 @@ defmodule ExBrand.Schema.RuntimePathsTest do
   test "fail_fast stops list validation at the first item error before list constraints" do
     previous_value = Application.get_env(:ex_brand, :schema_fail_fast)
     on_exit(fn -> restore_schema_fail_fast(previous_value) end)
-    Application.put_env(:ex_brand, :schema_fail_fast, true)
+    Schema.set_runtime_config!(fail_fast: true)
 
     schema = compile!({[{:integer, minimum: 1}], min_items: 3, unique_items: true})
 
@@ -93,7 +93,7 @@ defmodule ExBrand.Schema.RuntimePathsTest do
   test "fail_fast false accumulates list item and list-level errors" do
     previous_value = Application.get_env(:ex_brand, :schema_fail_fast)
     on_exit(fn -> restore_schema_fail_fast(previous_value) end)
-    Application.put_env(:ex_brand, :schema_fail_fast, false)
+    Schema.set_runtime_config!(fail_fast: false)
 
     schema = compile!({[{:integer, minimum: 1}], min_items: 3, unique_items: true})
 
@@ -102,10 +102,13 @@ defmodule ExBrand.Schema.RuntimePathsTest do
               %{0 => :less_than_minimum, 1 => :less_than_minimum, :__self__ => :items_not_unique}}
   end
 
-  defp restore_schema_fail_fast(nil), do: Application.delete_env(:ex_brand, :schema_fail_fast)
+  defp restore_schema_fail_fast(nil) do
+    Schema.set_runtime_config!(fail_fast: :unset)
+  end
 
-  defp restore_schema_fail_fast(value),
-    do: Application.put_env(:ex_brand, :schema_fail_fast, value)
+  defp restore_schema_fail_fast(value) do
+    Schema.set_runtime_config!(fail_fast: value)
+  end
 
   test "custom runtime validator can normalize nested values and wrap errors" do
     schema =
@@ -142,7 +145,7 @@ defmodule ExBrand.Schema.RuntimePathsTest do
   test "schema_deferred_checks can defer enum and format checks" do
     previous_value = Application.get_env(:ex_brand, :schema_deferred_checks)
     on_exit(fn -> restore_schema_deferred_checks(previous_value) end)
-    Application.put_env(:ex_brand, :schema_deferred_checks, [:enum, :format])
+    Schema.set_runtime_config!(deferred_checks: [:enum, :format])
 
     assert Schema.validate("draft", compile!({:string, enum: ["published"], format: :email})) ==
              {:ok, "draft"}
@@ -151,16 +154,18 @@ defmodule ExBrand.Schema.RuntimePathsTest do
   test "schema_deferred_checks can defer unique_items checks" do
     previous_value = Application.get_env(:ex_brand, :schema_deferred_checks)
     on_exit(fn -> restore_schema_deferred_checks(previous_value) end)
-    Application.put_env(:ex_brand, :schema_deferred_checks, [:unique_items])
+    Schema.set_runtime_config!(deferred_checks: [:unique_items])
 
     assert Schema.validate([1, 1], compile!({[:integer], unique_items: true})) == {:ok, [1, 1]}
   end
 
   defp compile!(schema), do: Schema.compile!(schema)
 
-  defp restore_schema_deferred_checks(nil),
-    do: Application.delete_env(:ex_brand, :schema_deferred_checks)
+  defp restore_schema_deferred_checks(nil) do
+    Schema.set_runtime_config!(deferred_checks: :unset)
+  end
 
-  defp restore_schema_deferred_checks(value),
-    do: Application.put_env(:ex_brand, :schema_deferred_checks, value)
+  defp restore_schema_deferred_checks(value) do
+    Schema.set_runtime_config!(deferred_checks: value)
+  end
 end

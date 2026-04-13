@@ -9,20 +9,19 @@ defmodule ExBrand.Schema.Runtime do
 
   @spec validate(term(), ExBrand.Schema.compiled_schema()) :: {:ok, term()} | {:error, term()}
   def validate(value, {:compiled, kind, data, opts}),
-    do: with_runtime_config(fn -> validate_compiled(value, kind, data, opts) end)
+    do: validate_compiled(value, kind, data, opts)
 
   def validate(_value, _schema) do
     raise ArgumentError, "schema must be compiled before runtime validation"
   end
 
-  @spec with_runtime_config((-> term())) :: term()
-  def with_runtime_config(fun) when is_function(fun, 0), do: Config.with_runtime_config(fun)
+  @spec set_runtime_config!(keyword(Config.runtime_option())) :: Config.t()
+  def set_runtime_config!(opts), do: Config.set_runtime_config!(opts)
 
   @spec validate_compiled_root(term(), :map | :list | :terminal, term(), keyword()) ::
           {:ok, term()} | {:error, term()}
-  def validate_compiled_root(value, kind, data, opts) do
-    with_runtime_config(fn -> validate_compiled(value, kind, data, opts) end)
-  end
+  def validate_compiled_root(value, kind, data, opts),
+    do: validate_compiled(value, kind, data, opts)
 
   @spec validate_compiled_nested(term(), :map | :list | :terminal, term(), keyword()) ::
           {:ok, term()} | {:error, term()}
@@ -119,9 +118,6 @@ defmodule ExBrand.Schema.Runtime do
 
   @spec schema_fail_fast_enabled?() :: boolean()
   def schema_fail_fast_enabled?, do: Config.schema_fail_fast_enabled?()
-
-  @spec schema_deferred_checks() :: MapSet.t(atom())
-  def schema_deferred_checks, do: Config.schema_deferred_checks()
 
   @spec build_key_lookup_context(map()) :: key_lookup_context()
   def build_key_lookup_context(params), do: MapValidator.build_key_lookup_context(params)
@@ -261,7 +257,7 @@ defmodule ExBrand.Schema.Runtime do
     end
   end
 
-  defp check_deferred?(check), do: MapSet.member?(schema_deferred_checks(), check)
+  defp check_deferred?(check), do: Config.deferred_check_enabled?(check)
   defp deep_nested_deferred?, do: check_deferred?(:deep_nested)
 
   defp put_error(nil, key, reason), do: %{key => reason}

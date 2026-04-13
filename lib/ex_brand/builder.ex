@@ -4,6 +4,7 @@ defmodule ExBrand.Builder do
   """
 
   alias ExBrand.Adapter
+  alias ExBrand.Builder.Config
   alias ExBrand.DSL
 
   @doc false
@@ -39,7 +40,7 @@ defmodule ExBrand.Builder do
     error = Keyword.get(opts, :error)
     generator = Keyword.get(opts, :generator)
     name = normalize_name(Keyword.get(opts, :name), module)
-    signature_verification = signature_verification_enabled?()
+    signature_verification = Config.signature_verification_enabled?()
     secret = if signature_verification, do: generate_brand_secret(), else: nil
     derive = normalize_derive(Keyword.get(opts, :derive))
 
@@ -474,9 +475,5 @@ defmodule ExBrand.Builder do
 
   defp generate_brand_secret do
     :crypto.strong_rand_bytes(32)
-  end
-
-  defp signature_verification_enabled? do
-    Application.get_env(:ex_brand, :signature_verification, false)
   end
 end
