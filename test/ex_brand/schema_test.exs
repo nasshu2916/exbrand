@@ -266,8 +266,37 @@ defmodule ExBrand.SchemaTest do
            }
   end
 
+  test "schema_deferred_checks can defer deep nested validation in generated schema" do
+    module =
+      Module.concat(__MODULE__, :"DeferredNestedSchema#{System.unique_integer([:positive])}")
+
+    Code.compile_string("""
+    defmodule #{module} do
+      use ExBrand.Schema
+
+      field(:scores, [{:integer, minimum: 1}])
+    end
+    """)
+
+    previous_value = Application.get_env(:ex_brand, :schema_deferred_checks)
+    on_exit(fn -> restore_schema_deferred_checks(previous_value) end)
+
+    Application.put_env(:ex_brand, :schema_deferred_checks, [])
+
+    assert module.validate(%{scores: [0]}) == {:error, %{scores: %{0 => :less_than_minimum}}}
+
+    Application.put_env(:ex_brand, :schema_deferred_checks, [:deep_nested])
+    assert module.validate(%{scores: [0]}) == {:ok, %{scores: [0]}}
+  end
+
   defp restore_schema_fail_fast(nil), do: Application.delete_env(:ex_brand, :schema_fail_fast)
 
   defp restore_schema_fail_fast(value),
     do: Application.put_env(:ex_brand, :schema_fail_fast, value)
+
+  defp restore_schema_deferred_checks(nil),
+    do: Application.delete_env(:ex_brand, :schema_deferred_checks)
+
+  defp restore_schema_deferred_checks(value),
+    do: Application.put_env(:ex_brand, :schema_deferred_checks, value)
 end

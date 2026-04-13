@@ -140,4 +140,27 @@ defmodule ExBrand.Schema.RuntimePathsTest do
     assert Schema.validate(1, {:integer, minimum: "1"}) == {:error, :invalid_schema}
     assert Schema.validate("ab", {:string, min_length: "1"}) == {:error, :invalid_schema}
   end
+
+  test "schema_deferred_checks can defer enum and format checks" do
+    previous_value = Application.get_env(:ex_brand, :schema_deferred_checks)
+    on_exit(fn -> restore_schema_deferred_checks(previous_value) end)
+    Application.put_env(:ex_brand, :schema_deferred_checks, [:enum, :format])
+
+    assert Schema.validate("draft", {:string, enum: ["published"], format: :email}) ==
+             {:ok, "draft"}
+  end
+
+  test "schema_deferred_checks can defer unique_items checks" do
+    previous_value = Application.get_env(:ex_brand, :schema_deferred_checks)
+    on_exit(fn -> restore_schema_deferred_checks(previous_value) end)
+    Application.put_env(:ex_brand, :schema_deferred_checks, [:unique_items])
+
+    assert Schema.validate([1, 1], {[:integer], unique_items: true}) == {:ok, [1, 1]}
+  end
+
+  defp restore_schema_deferred_checks(nil),
+    do: Application.delete_env(:ex_brand, :schema_deferred_checks)
+
+  defp restore_schema_deferred_checks(value),
+    do: Application.put_env(:ex_brand, :schema_deferred_checks, value)
 end

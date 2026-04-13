@@ -12,6 +12,22 @@ defmodule ExBrand.Schema.Runtime do
   def validate_compiled_root(value, kind, data, opts),
     do: validate_compiled(value, kind, data, opts)
 
+  @type key_lookup_context() :: %{String.t() => atom()}
+
+  @spec validate_compiled_nested(term(), :map | :list | :terminal, term(), keyword()) ::
+          {:ok, term()} | {:error, term()}
+  def validate_compiled_nested(value, kind, data, opts) do
+    if deep_nested_deferred?() and kind in [:map, :list] do
+      case kind do
+        :map when is_map(value) -> {:ok, value}
+        :list when is_list(value) -> {:ok, value}
+        _ -> {:error, :invalid_type}
+      end
+    else
+      validate_compiled_root(value, kind, data, opts)
+    end
+  end
+
   @spec validate_compiled(term(), :map | :list | :terminal, term(), keyword()) ::
           {:ok, term()} | {:error, term()}
   def validate_compiled(value, kind, data, opts) do
@@ -82,17 +98,18 @@ defmodule ExBrand.Schema.Runtime do
 
   defp validate_map(value, schema_fields, opts) when is_map(value) do
     fail_fast = fail_fast?(opts)
+    key_context = build_key_lookup_context(value)
 
     if reject_extra_fields?(opts) do
-      validate_map_strict(value, schema_fields, fail_fast)
+      validate_map_strict(value, schema_fields, fail_fast, key_context)
     else
-      validate_map_relaxed(value, schema_fields, fail_fast)
+      validate_map_relaxed(value, schema_fields, fail_fast, key_context)
     end
   end
 
   defp validate_map(_value, _schema_fields, _opts), do: {:error, :invalid_type}
 
-  defp validate_map_strict(value, schema_fields, true) do
+  defp validate_map_strict(value, schema_fields, true, key_context) do
     case Enum.reduce_while(schema_fields, {%{}, MapSet.new()}, fn {name, field_schema},
                                                                   {normalized, consumed_keys} ->
            {schema, field_opts, field_lookup, schema_without_opts} =
@@ -100,13 +117,10 @@ defmodule ExBrand.Schema.Runtime do
 
            validate_strict_field(
              value,
-             name,
-             schema,
-             field_lookup,
-             schema_without_opts,
-             field_opts,
+             {name, schema, field_lookup, schema_without_opts, field_opts},
              normalized,
-             consumed_keys
+             consumed_keys,
+             key_context
            )
          end) do
       {:error, errors} ->
@@ -120,14 +134,14 @@ defmodule ExBrand.Schema.Runtime do
     end
   end
 
-  defp validate_map_strict(value, schema_fields, false) do
+  defp validate_map_strict(value, schema_fields, false, key_context) do
     {normalized, errors, consumed_keys} =
       Enum.reduce(schema_fields, {%{}, nil, MapSet.new()}, fn {name, field_schema},
                                                               {normalized, errors, consumed_keys} ->
         {schema, field_opts, field_lookup, schema_without_opts} =
           field_metadata(field_schema, name)
 
-        case fetch_field_value(value, field_lookup) do
+        case fetch_field_value(value, field_lookup, key_context) do
           {:ok, field_value, used_key} ->
             case validate_schema(field_value, schema) do
               {:ok, normalized_value} ->
@@ -155,15 +169,12 @@ defmodule ExBrand.Schema.Runtime do
 
   defp validate_strict_field(
          value,
-         name,
-         schema,
-         field_lookup,
-         schema_without_opts,
-         field_opts,
+         {name, schema, field_lookup, schema_without_opts, field_opts},
          normalized,
-         consumed_keys
+         consumed_keys,
+         key_context
        ) do
-    case fetch_field_value(value, field_lookup) do
+    case fetch_field_value(value, field_lookup, key_context) do
       {:ok, field_value, used_key} ->
         validate_present_strict_field(
           field_value,
@@ -219,11 +230,11 @@ defmodule ExBrand.Schema.Runtime do
     end
   end
 
-  defp validate_map_relaxed(value, schema_fields, true) do
+  defp validate_map_relaxed(value, schema_fields, true, key_context) do
     Enum.reduce_while(schema_fields, {:ok, %{}}, fn {name, field_schema}, {:ok, normalized} ->
       {schema, field_opts, field_lookup, schema_without_opts} = field_metadata(field_schema, name)
 
-      case fetch_field_value(value, field_lookup) do
+      case fetch_field_value(value, field_lookup, key_context) do
         {:ok, field_value, _used_key} ->
           case validate_schema(field_value, schema) do
             {:ok, normalized_value} ->
@@ -245,13 +256,13 @@ defmodule ExBrand.Schema.Runtime do
     end)
   end
 
-  defp validate_map_relaxed(value, schema_fields, false) do
+  defp validate_map_relaxed(value, schema_fields, false, key_context) do
     {normalized, errors} =
       Enum.reduce(schema_fields, {%{}, nil}, fn {name, field_schema}, {normalized, errors} ->
         {schema, field_opts, field_lookup, schema_without_opts} =
           field_metadata(field_schema, name)
 
-        case fetch_field_value(value, field_lookup) do
+        case fetch_field_value(value, field_lookup, key_context) do
           {:ok, field_value, _used_key} ->
             case validate_schema(field_value, schema) do
               {:ok, normalized_value} ->
@@ -333,11 +344,10 @@ defmodule ExBrand.Schema.Runtime do
     not (Keyword.get(opts, :tolerant, false) or Keyword.get(opts, :allow_extra_fields, false))
   end
 
-  defp atomizable_key?(key) do
-    _ = String.to_existing_atom(key)
-    true
+  defp to_existing_atom_safe(key) when is_binary(key) do
+    {:ok, String.to_existing_atom(key)}
   rescue
-    ArgumentError -> false
+    ArgumentError -> :error
   end
 
   defp field_metadata(
@@ -405,11 +415,42 @@ defmodule ExBrand.Schema.Runtime do
     end
   end
 
-  defp fetch_field_value(params, {:compiled, lookup}) do
-    fetch_compiled_field_value(params, lookup)
+  @spec schema_deferred_checks() :: MapSet.t(atom())
+  def schema_deferred_checks do
+    Application.get_env(:ex_brand, :schema_deferred_checks, [])
+    |> List.wrap()
+    |> Enum.filter(&(&1 in [:enum, :format, :regex, :unique_items, :deep_nested]))
+    |> MapSet.new()
   end
 
-  defp fetch_field_value(params, {:raw, name, opts}) do
+  defp check_deferred?(check) do
+    MapSet.member?(schema_deferred_checks(), check)
+  end
+
+  defp deep_nested_deferred?, do: check_deferred?(:deep_nested)
+
+  @spec build_key_lookup_context(map()) :: key_lookup_context()
+  def build_key_lookup_context(params) when is_map(params) do
+    Enum.reduce(params, %{}, fn
+      {key, _value}, acc when is_binary(key) ->
+        case to_existing_atom_safe(key) do
+          {:ok, atom_key} -> Map.put_new(acc, key, atom_key)
+          :error -> acc
+        end
+
+      {key, _value}, acc when is_atom(key) ->
+        Map.put_new(acc, Atom.to_string(key), key)
+
+      {_key, _value}, acc ->
+        acc
+    end)
+  end
+
+  defp fetch_field_value(params, {:compiled, lookup}, key_context) do
+    fetch_compiled_field_value(params, lookup, key_context)
+  end
+
+  defp fetch_field_value(params, {:raw, name, opts}, key_context) do
     external_name = Keyword.get(opts, :field, name)
 
     cond do
@@ -423,35 +464,57 @@ defmodule ExBrand.Schema.Runtime do
       is_binary(external_name) and Map.has_key?(params, external_name) ->
         {:ok, Map.fetch!(params, external_name), external_name}
 
-      is_binary(external_name) and atomizable_key?(external_name) and
-          Map.has_key?(params, String.to_atom(external_name)) ->
-        key = String.to_atom(external_name)
-        {:ok, Map.fetch!(params, key), key}
+      is_binary(external_name) ->
+        fetch_existing_atom_binary_field(params, external_name, key_context)
 
       true ->
         :missing
     end
   end
 
-  @spec fetch_compiled_field_value(map(), [Definition.runtime_lookup_entry()]) ::
-          {:ok, term(), atom() | String.t()} | :missing
-  def fetch_compiled_field_value(_params, []), do: :missing
+  defp fetch_existing_atom_binary_field(params, external_name, key_context) do
+    case Map.fetch(key_context, external_name) do
+      {:ok, atom_key} ->
+        if Map.has_key?(params, atom_key) do
+          {:ok, Map.fetch!(params, atom_key), atom_key}
+        else
+          :missing
+        end
 
-  def fetch_compiled_field_value(params, [key | rest]) when is_atom(key) or is_binary(key) do
-    if Map.has_key?(params, key) do
-      {:ok, Map.fetch!(params, key), key}
-    else
-      fetch_compiled_field_value(params, rest)
+      _ ->
+        :missing
     end
   end
 
-  def fetch_compiled_field_value(params, [{:existing_atom_binary, key} | rest]) do
-    with true <- atomizable_key?(key),
-         atom_key <- String.to_atom(key),
+  @spec fetch_compiled_field_value(map(), [Definition.runtime_lookup_entry()]) ::
+          {:ok, term(), atom() | String.t()} | :missing
+  def fetch_compiled_field_value(params, lookup) do
+    fetch_compiled_field_value(params, lookup, build_key_lookup_context(params))
+  end
+
+  @spec fetch_compiled_field_value(
+          map(),
+          [Definition.runtime_lookup_entry()],
+          key_lookup_context()
+        ) ::
+          {:ok, term(), atom() | String.t()} | :missing
+  def fetch_compiled_field_value(_params, [], _key_context), do: :missing
+
+  def fetch_compiled_field_value(params, [key | rest], key_context)
+      when is_atom(key) or is_binary(key) do
+    if Map.has_key?(params, key) do
+      {:ok, Map.fetch!(params, key), key}
+    else
+      fetch_compiled_field_value(params, rest, key_context)
+    end
+  end
+
+  def fetch_compiled_field_value(params, [{:existing_atom_binary, key} | rest], key_context) do
+    with {:ok, atom_key} <- Map.fetch(key_context, key),
          true <- Map.has_key?(params, atom_key) do
       {:ok, Map.fetch!(params, atom_key), atom_key}
     else
-      _ -> fetch_compiled_field_value(params, rest)
+      _ -> fetch_compiled_field_value(params, rest, key_context)
     end
   end
 
@@ -597,9 +660,13 @@ defmodule ExBrand.Schema.Runtime do
   defp run_compiled_generic_checks(_value, [], _context), do: :ok
 
   defp run_compiled_generic_checks(value, [{:enum, enum_values} | rest], context) do
-    if value in enum_values,
-      do: run_compiled_generic_checks(value, rest, context),
-      else: {:error, :not_in_enum}
+    if check_deferred?(:enum) do
+      run_compiled_generic_checks(value, rest, context)
+    else
+      if value in enum_values,
+        do: run_compiled_generic_checks(value, rest, context),
+        else: {:error, :not_in_enum}
+    end
   end
 
   defp run_compiled_generic_checks(value, [{:minimum, minimum} | rest], context) do
@@ -631,14 +698,22 @@ defmodule ExBrand.Schema.Runtime do
   end
 
   defp run_compiled_generic_checks(value, [{:format, :email} | rest], context) do
-    with :ok <- validate_email_format(value) do
+    if check_deferred?(:format) or check_deferred?(:regex) do
       run_compiled_generic_checks(value, rest, context)
+    else
+      with :ok <- validate_email_format(value) do
+        run_compiled_generic_checks(value, rest, context)
+      end
     end
   end
 
   defp run_compiled_generic_checks(value, [{:format, :datetime} | rest], context) do
-    with :ok <- validate_datetime_format(value) do
+    if check_deferred?(:format) or check_deferred?(:regex) do
       run_compiled_generic_checks(value, rest, context)
+    else
+      with :ok <- validate_datetime_format(value) do
+        run_compiled_generic_checks(value, rest, context)
+      end
     end
   end
 
@@ -670,26 +745,31 @@ defmodule ExBrand.Schema.Runtime do
     do: run_compiled_list_check(rest, kind, context)
 
   defp run_compiled_list_uniqueness_check(items, checks) do
-    if :unique_items in checks do
-      if Enum.uniq(items) == items, do: :ok, else: {:error, :items_not_unique}
-    else
+    if check_deferred?(:unique_items) do
       :ok
+    else
+      if :unique_items in checks do
+        if Enum.uniq(items) == items, do: :ok, else: {:error, :items_not_unique}
+      else
+        :ok
+      end
     end
   end
 
-  defp compiled_list_check_error(:min_items), do: {:error, :fewer_than_min_items}
-  defp compiled_list_check_error(:max_items), do: {:error, :more_than_max_items}
-
   defp validate_enum(value, opts) do
-    case Keyword.fetch(opts, :enum) do
-      {:ok, enum_values} when is_list(enum_values) ->
-        if value in enum_values, do: :ok, else: {:error, :not_in_enum}
+    if check_deferred?(:enum) do
+      :ok
+    else
+      case Keyword.fetch(opts, :enum) do
+        {:ok, enum_values} when is_list(enum_values) ->
+          if value in enum_values, do: :ok, else: {:error, :not_in_enum}
 
-      {:ok, _other} ->
-        {:error, :invalid_schema}
+        {:ok, _other} ->
+          {:error, :invalid_schema}
 
-      :error ->
-        :ok
+        :error ->
+          :ok
+      end
     end
   end
 
@@ -714,20 +794,31 @@ defmodule ExBrand.Schema.Runtime do
   defp validate_length(_value, _opts), do: :ok
 
   defp validate_format(value, opts) when is_binary(value) do
-    case Keyword.get(opts, :format) do
-      nil -> :ok
-      :email -> validate_email_format(value)
-      :datetime -> validate_datetime_format(value)
-      _other -> {:error, :invalid_schema}
+    if check_deferred?(:format) or check_deferred?(:regex) do
+      :ok
+    else
+      case Keyword.get(opts, :format) do
+        nil -> :ok
+        :email -> validate_email_format(value)
+        :datetime -> validate_datetime_format(value)
+        _other -> {:error, :invalid_schema}
+      end
     end
   end
 
   defp validate_format(_value, opts) do
-    case Keyword.get(opts, :format) do
-      nil -> :ok
-      _other -> {:error, :invalid_type}
+    if check_deferred?(:format) or check_deferred?(:regex) do
+      :ok
+    else
+      case Keyword.get(opts, :format) do
+        nil -> :ok
+        _other -> {:error, :invalid_type}
+      end
     end
   end
+
+  defp compiled_list_check_error(:min_items), do: {:error, :fewer_than_min_items}
+  defp compiled_list_check_error(:max_items), do: {:error, :more_than_max_items}
 
   defp validate_email_format(value) do
     if String.match?(value, ~r/^[^\s]+@[^\s]+\.[^\s]+$/), do: :ok, else: {:error, :invalid_format}
@@ -848,10 +939,14 @@ defmodule ExBrand.Schema.Runtime do
   end
 
   defp check_unique_items(items, opts) do
-    case Keyword.get(opts, :unique_items, false) do
-      true -> if Enum.uniq(items) == items, do: :ok, else: {:error, :items_not_unique}
-      false -> :ok
-      _other -> {:error, :invalid_schema}
+    if check_deferred?(:unique_items) do
+      :ok
+    else
+      case Keyword.get(opts, :unique_items, false) do
+        true -> if Enum.uniq(items) == items, do: :ok, else: {:error, :items_not_unique}
+        false -> :ok
+        _other -> {:error, :invalid_schema}
+      end
     end
   end
 end

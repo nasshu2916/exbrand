@@ -230,10 +230,14 @@ defmodule ExBrand.Schema do
     collect_ast =
       if tolerant do
         quote do
-          defp unquote(collect_name)(params, normalized, errors) do
-            case unquote(runtime_module).fetch_compiled_field_value(params, unquote(lookup_ast)) do
+          defp unquote(collect_name)(params, key_context, normalized, errors) do
+            case unquote(runtime_module).fetch_compiled_field_value(
+                   params,
+                   unquote(lookup_ast),
+                   key_context
+                 ) do
               {:ok, field_value, _used_key} ->
-                case unquote(runtime_module).validate_compiled_root(
+                case unquote(runtime_module).validate_compiled_nested(
                        field_value,
                        unquote(schema_kind),
                        unquote(schema_data_ast),
@@ -268,10 +272,14 @@ defmodule ExBrand.Schema do
         end
       else
         quote do
-          defp unquote(collect_name)(params, normalized, errors, consumed_keys) do
-            case unquote(runtime_module).fetch_compiled_field_value(params, unquote(lookup_ast)) do
+          defp unquote(collect_name)(params, key_context, normalized, errors, consumed_keys) do
+            case unquote(runtime_module).fetch_compiled_field_value(
+                   params,
+                   unquote(lookup_ast),
+                   key_context
+                 ) do
               {:ok, field_value, used_key} ->
-                case unquote(runtime_module).validate_compiled_root(
+                case unquote(runtime_module).validate_compiled_nested(
                        field_value,
                        unquote(schema_kind),
                        unquote(schema_data_ast),
@@ -310,10 +318,14 @@ defmodule ExBrand.Schema do
     fail_ast =
       if tolerant do
         quote do
-          defp unquote(fail_name)(params, normalized) do
-            case unquote(runtime_module).fetch_compiled_field_value(params, unquote(lookup_ast)) do
+          defp unquote(fail_name)(params, key_context, normalized) do
+            case unquote(runtime_module).fetch_compiled_field_value(
+                   params,
+                   unquote(lookup_ast),
+                   key_context
+                 ) do
               {:ok, field_value, _used_key} ->
-                case unquote(runtime_module).validate_compiled_root(
+                case unquote(runtime_module).validate_compiled_nested(
                        field_value,
                        unquote(schema_kind),
                        unquote(schema_data_ast),
@@ -342,10 +354,14 @@ defmodule ExBrand.Schema do
         end
       else
         quote do
-          defp unquote(fail_name)(params, normalized, consumed_keys) do
-            case unquote(runtime_module).fetch_compiled_field_value(params, unquote(lookup_ast)) do
+          defp unquote(fail_name)(params, key_context, normalized, consumed_keys) do
+            case unquote(runtime_module).fetch_compiled_field_value(
+                   params,
+                   unquote(lookup_ast),
+                   key_context
+                 ) do
               {:ok, field_value, used_key} ->
-                case unquote(runtime_module).validate_compiled_root(
+                case unquote(runtime_module).validate_compiled_nested(
                        field_value,
                        unquote(schema_kind),
                        unquote(schema_data_ast),
@@ -379,15 +395,18 @@ defmodule ExBrand.Schema do
   end
 
   defp build_map_collect_root_ast(field_fun_names, true) do
+    runtime_module = Runtime
+
     step_asts =
       Enum.map(field_fun_names, fn field_fun_name ->
         quote do
-          {normalized, errors} = unquote(field_fun_name)(params, normalized, errors)
+          {normalized, errors} = unquote(field_fun_name)(params, key_context, normalized, errors)
         end
       end)
 
     quote do
       defp __validate_root_map_collect__(params) when is_map(params) do
+        key_context = unquote(runtime_module).build_key_lookup_context(params)
         {normalized, errors} = {%{}, nil}
         unquote_splicing(step_asts)
 
@@ -406,12 +425,13 @@ defmodule ExBrand.Schema do
       Enum.map(field_fun_names, fn field_fun_name ->
         quote do
           {normalized, errors, consumed_keys} =
-            unquote(field_fun_name)(params, normalized, errors, consumed_keys)
+            unquote(field_fun_name)(params, key_context, normalized, errors, consumed_keys)
         end
       end)
 
     quote do
       defp __validate_root_map_collect__(params) when is_map(params) do
+        key_context = unquote(runtime_module).build_key_lookup_context(params)
         {normalized, errors, consumed_keys} = {%{}, nil, MapSet.new()}
         unquote_splicing(step_asts)
 
@@ -435,6 +455,8 @@ defmodule ExBrand.Schema do
   end
 
   defp build_map_fail_root_ast(field_fun_names, true) do
+    runtime_module = Runtime
+
     chain_ast =
       case field_fun_names do
         [] ->
@@ -443,11 +465,11 @@ defmodule ExBrand.Schema do
         [first_fun_name | rest_fun_names] ->
           Enum.reduce(
             rest_fun_names,
-            quote(do: unquote(first_fun_name)(params, %{})),
+            quote(do: unquote(first_fun_name)(params, key_context, %{})),
             fn field_fun_name, acc_ast ->
               quote do
                 case unquote(acc_ast) do
-                  {:ok, normalized} -> unquote(field_fun_name)(params, normalized)
+                  {:ok, normalized} -> unquote(field_fun_name)(params, key_context, normalized)
                   {:error, reason} -> {:error, reason}
                 end
               end
@@ -457,6 +479,7 @@ defmodule ExBrand.Schema do
 
     quote do
       defp __validate_root_map_fail_fast__(params) when is_map(params) do
+        key_context = unquote(runtime_module).build_key_lookup_context(params)
         unquote(chain_ast)
       end
 
@@ -476,12 +499,12 @@ defmodule ExBrand.Schema do
         [first_fun_name | rest_fun_names] ->
           Enum.reduce(
             rest_fun_names,
-            quote(do: unquote(first_fun_name)(params, %{}, MapSet.new())),
+            quote(do: unquote(first_fun_name)(params, key_context, %{}, MapSet.new())),
             fn field_fun_name, acc_ast ->
               quote do
                 case unquote(acc_ast) do
                   {:ok, normalized, consumed_keys} ->
-                    unquote(field_fun_name)(params, normalized, consumed_keys)
+                    unquote(field_fun_name)(params, key_context, normalized, consumed_keys)
 
                   {:error, reason} ->
                     {:error, reason}
@@ -493,6 +516,8 @@ defmodule ExBrand.Schema do
 
     quote do
       defp __validate_root_map_fail_fast__(params) when is_map(params) do
+        key_context = unquote(runtime_module).build_key_lookup_context(params)
+
         case unquote(chain_ast) do
           {:error, reason} ->
             {:error, reason}
