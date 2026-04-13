@@ -6,7 +6,12 @@ defmodule ExBrand.Schema.Runtime do
   alias ExBrand.Validator
 
   @spec validate(term(), term()) :: {:ok, term()} | {:error, term()}
-  def validate(value, schema), do: with_runtime_config(fn -> validate_schema(value, schema) end)
+  def validate(value, {:compiled, kind, data, opts}),
+    do: with_runtime_config(fn -> validate_compiled(value, kind, data, opts) end)
+
+  def validate(_value, _schema) do
+    raise ArgumentError, "schema must be compiled before runtime validation"
+  end
 
   @spec with_runtime_config((-> term())) :: term()
   def with_runtime_config(fun) when is_function(fun, 0), do: Config.with_runtime_config(fun)
@@ -51,24 +56,8 @@ defmodule ExBrand.Schema.Runtime do
     end
   end
 
-  defp validate_schema(value, {:compiled, kind, data, opts}) do
-    validate_compiled(value, kind, data, opts)
-  end
-
-  defp validate_schema(value, schema) do
-    {base_schema, opts} = Definition.split_schema_opts(schema)
-
-    if Keyword.get(opts, :nullable, false) and is_nil(value) do
-      {:ok, nil}
-    else
-      with {:ok, typed_value} <- validate_typed_value(value, base_schema, opts),
-           {:ok, constrained_value} <- apply_constraints(typed_value, base_schema, opts) do
-        {:ok, constrained_value}
-      else
-        {:error, reason} -> {:error, wrap_error(reason, opts)}
-      end
-    end
-  end
+  defp validate_schema(value, {:compiled, kind, data, opts}),
+    do: validate_compiled(value, kind, data, opts)
 
   defp validate_compiled_typed_value(value, :map, schema_fields, opts),
     do: validate_map(value, schema_fields, opts)
@@ -81,23 +70,6 @@ defmodule ExBrand.Schema.Runtime do
       {:brand, module} -> module.cast(value)
       {:schema, module} -> module.validate(value)
       {:base, base} -> Validator.validate_schema_base(value, base)
-    end
-  end
-
-  defp validate_typed_value(value, schema, opts) when is_map(schema),
-    do: validate_map(value, schema, opts)
-
-  defp validate_typed_value(value, [item_schema], opts),
-    do: validate_list(value, item_schema, opts)
-
-  defp validate_typed_value(_value, [], _opts), do: {:error, :invalid_schema}
-
-  defp validate_typed_value(value, schema, _opts) do
-    case Definition.resolve_terminal_schema(schema) do
-      {:ok, {:brand, module}} -> module.cast(value)
-      {:ok, {:schema, module}} -> module.validate(value)
-      {:ok, {:base, base}} -> Validator.validate_schema_base(value, base)
-      :error -> {:error, :invalid_schema}
     end
   end
 
@@ -125,8 +97,7 @@ defmodule ExBrand.Schema.Runtime do
   defp validate_map_strict(value, schema_fields, true, key_context) do
     case Enum.reduce_while(schema_fields, {%{}, MapSet.new()}, fn {name, field_schema},
                                                                   {normalized, consumed_keys} ->
-           {schema, field_opts, field_lookup, schema_without_opts} =
-             field_metadata(field_schema, name)
+           {schema, field_opts, field_lookup, schema_without_opts} = field_metadata(field_schema)
 
            validate_strict_field(
              value,
@@ -151,8 +122,7 @@ defmodule ExBrand.Schema.Runtime do
     {normalized, errors, consumed_keys} =
       Enum.reduce(schema_fields, {%{}, nil, MapSet.new()}, fn {name, field_schema},
                                                               {normalized, errors, consumed_keys} ->
-        {schema, field_opts, field_lookup, schema_without_opts} =
-          field_metadata(field_schema, name)
+        {schema, field_opts, field_lookup, schema_without_opts} = field_metadata(field_schema)
 
         case fetch_field_value(value, field_lookup, key_context) do
           {:ok, field_value, used_key} ->
@@ -245,7 +215,7 @@ defmodule ExBrand.Schema.Runtime do
 
   defp validate_map_relaxed(value, schema_fields, true, key_context) do
     Enum.reduce_while(schema_fields, {:ok, %{}}, fn {name, field_schema}, {:ok, normalized} ->
-      {schema, field_opts, field_lookup, schema_without_opts} = field_metadata(field_schema, name)
+      {schema, field_opts, field_lookup, schema_without_opts} = field_metadata(field_schema)
 
       case fetch_field_value(value, field_lookup, key_context) do
         {:ok, field_value, _used_key} ->
@@ -272,8 +242,7 @@ defmodule ExBrand.Schema.Runtime do
   defp validate_map_relaxed(value, schema_fields, false, key_context) do
     {normalized, errors} =
       Enum.reduce(schema_fields, {%{}, nil}, fn {name, field_schema}, {normalized, errors} ->
-        {schema, field_opts, field_lookup, schema_without_opts} =
-          field_metadata(field_schema, name)
+        {schema, field_opts, field_lookup, schema_without_opts} = field_metadata(field_schema)
 
         case fetch_field_value(value, field_lookup, key_context) do
           {:ok, field_value, _used_key} ->
@@ -334,16 +303,8 @@ defmodule ExBrand.Schema.Runtime do
 
     normalized_items = Enum.reverse(normalized_items)
 
-    result =
-      case compiled_list_checks(opts) do
-        nil ->
-          apply_list_constraints(value, normalized_items, item_errors, opts)
-
-        checks ->
-          apply_compiled_list_constraints(value, normalized_items, item_errors, checks)
-      end
-
-    result
+    checks = compiled_list_checks(opts) || []
+    apply_compiled_list_constraints(value, normalized_items, item_errors, checks)
   end
 
   defp append_extra_field_errors(value, consumed_keys, errors) do
@@ -363,32 +324,14 @@ defmodule ExBrand.Schema.Runtime do
     ArgumentError -> :error
   end
 
-  defp field_metadata(
-         %{schema: schema, schema_without_opts: schema_without_opts, opts: opts, lookup: lookup},
-         _name
-       ) do
+  defp field_metadata(%{
+         schema: schema,
+         schema_without_opts: schema_without_opts,
+         opts: opts,
+         lookup: lookup
+       }) do
     {schema, opts, {:compiled, lookup}, schema_without_opts}
   end
-
-  defp field_metadata(field_schema, name) do
-    schema = field_schema(field_schema)
-    opts = field_opts(field_schema)
-    {schema, opts, field_lookup(field_schema, name, opts), field_schema_without_opts(schema)}
-  end
-
-  defp field_schema(%{schema: schema}), do: schema
-  defp field_schema(schema), do: schema
-
-  defp field_lookup(%{lookup: lookup}, _name, _opts), do: {:compiled, lookup}
-  defp field_lookup(_schema, name, opts), do: {:raw, name, opts}
-
-  defp field_opts(%{schema: schema}), do: field_opts(schema)
-  defp field_opts({:compiled, _kind, _data, opts}), do: opts
-  defp field_opts(schema), do: elem(Definition.split_schema_opts(schema), 1)
-
-  defp field_schema_without_opts(%{schema: schema}), do: field_schema_without_opts(schema)
-  defp field_schema_without_opts({:compiled, kind, data, _opts}), do: {:compiled, kind, data, []}
-  defp field_schema_without_opts(schema), do: elem(Definition.split_schema_opts(schema), 0)
 
   defp compiled_base_schema(:map, schema_fields), do: {:compiled, :map, schema_fields, []}
   defp compiled_base_schema(:list, item_schema), do: {:compiled, :list, item_schema, []}
@@ -454,42 +397,6 @@ defmodule ExBrand.Schema.Runtime do
     fetch_compiled_field_value(params, lookup, key_context)
   end
 
-  defp fetch_field_value(params, {:raw, name, opts}, key_context) do
-    external_name = Keyword.get(opts, :field, name)
-
-    cond do
-      is_atom(external_name) and Map.has_key?(params, external_name) ->
-        {:ok, Map.fetch!(params, external_name), external_name}
-
-      is_atom(external_name) and Map.has_key?(params, Atom.to_string(external_name)) ->
-        key = Atom.to_string(external_name)
-        {:ok, Map.fetch!(params, key), key}
-
-      is_binary(external_name) and Map.has_key?(params, external_name) ->
-        {:ok, Map.fetch!(params, external_name), external_name}
-
-      is_binary(external_name) ->
-        fetch_existing_atom_binary_field(params, external_name, key_context)
-
-      true ->
-        :missing
-    end
-  end
-
-  defp fetch_existing_atom_binary_field(params, external_name, key_context) do
-    case Map.fetch(key_context, external_name) do
-      {:ok, atom_key} ->
-        if Map.has_key?(params, atom_key) do
-          {:ok, Map.fetch!(params, atom_key), atom_key}
-        else
-          :missing
-        end
-
-      _ ->
-        :missing
-    end
-  end
-
   @spec fetch_compiled_field_value(map(), [Definition.runtime_lookup_entry()]) ::
           {:ok, term(), atom() | String.t()} | :missing
   def fetch_compiled_field_value(params, lookup) do
@@ -541,28 +448,6 @@ defmodule ExBrand.Schema.Runtime do
            ) do
       {:ok, normalized_value}
     end
-  end
-
-  defp apply_constraints(value, base_schema, opts) do
-    constraint_input = constraint_input(base_schema, value)
-
-    with :ok <- validate_enum(constraint_input, opts),
-         :ok <- validate_numeric(constraint_input, opts),
-         :ok <- validate_length(constraint_input, opts),
-         :ok <- validate_format(constraint_input, opts),
-         {:ok, normalized_value} <- run_custom_validator(value, base_schema, opts) do
-      {:ok, normalized_value}
-    end
-  end
-
-  defp apply_list_constraints(original_items, normalized_items, item_errors, opts) do
-    errors =
-      item_errors
-      |> maybe_put_self_error(check_min_items(original_items, opts))
-      |> maybe_put_self_error(check_max_items(original_items, opts))
-      |> maybe_put_self_error(check_unique_items(original_items, opts))
-
-    maybe_error_or_ok(errors, normalized_items)
   end
 
   defp apply_compiled_list_constraints(original_items, normalized_items, item_errors, checks) do
@@ -627,22 +512,13 @@ defmodule ExBrand.Schema.Runtime do
   end
 
   defp validate_list_constraints_fail_fast(original_items, opts) do
-    case compiled_list_checks(opts) do
-      nil ->
-        with :ok <- check_min_items(original_items, opts),
-             :ok <- check_max_items(original_items, opts),
-             :ok <- check_unique_items(original_items, opts) do
-          :ok
-        end
+    checks = compiled_list_checks(opts) || []
+    context = build_compiled_list_context(original_items, checks)
 
-      checks ->
-        context = build_compiled_list_context(original_items, checks)
-
-        with :ok <- run_compiled_list_check(checks, :min_items, context),
-             :ok <- run_compiled_list_check(checks, :max_items, context),
-             :ok <- run_compiled_list_uniqueness_check(original_items, checks) do
-          :ok
-        end
+    with :ok <- run_compiled_list_check(checks, :min_items, context),
+         :ok <- run_compiled_list_check(checks, :max_items, context),
+         :ok <- run_compiled_list_uniqueness_check(original_items, checks) do
+      :ok
     end
   end
 
@@ -762,67 +638,6 @@ defmodule ExBrand.Schema.Runtime do
     end
   end
 
-  defp validate_enum(value, opts) do
-    if check_deferred?(:enum) do
-      :ok
-    else
-      case Keyword.fetch(opts, :enum) do
-        {:ok, enum_values} when is_list(enum_values) ->
-          if value in enum_values, do: :ok, else: {:error, :not_in_enum}
-
-        {:ok, _other} ->
-          {:error, :invalid_schema}
-
-        :error ->
-          :ok
-      end
-    end
-  end
-
-  defp validate_numeric(value, opts) when is_number(value) do
-    with :ok <- check_minimum(value, opts),
-         :ok <- check_maximum(value, opts) do
-      :ok
-    end
-  end
-
-  defp validate_numeric(_value, _opts), do: :ok
-
-  defp validate_length(value, opts) when is_binary(value) do
-    length = String.length(value)
-
-    with :ok <- check_min_length(length, opts),
-         :ok <- check_max_length(length, opts) do
-      :ok
-    end
-  end
-
-  defp validate_length(_value, _opts), do: :ok
-
-  defp validate_format(value, opts) when is_binary(value) do
-    if check_deferred?(:format) or check_deferred?(:regex) do
-      :ok
-    else
-      case Keyword.get(opts, :format) do
-        nil -> :ok
-        :email -> validate_email_format(value)
-        :datetime -> validate_datetime_format(value)
-        _other -> {:error, :invalid_schema}
-      end
-    end
-  end
-
-  defp validate_format(_value, opts) do
-    if check_deferred?(:format) or check_deferred?(:regex) do
-      :ok
-    else
-      case Keyword.get(opts, :format) do
-        nil -> :ok
-        _other -> {:error, :invalid_type}
-      end
-    end
-  end
-
   defp compiled_list_check_error(:min_items), do: {:error, :fewer_than_min_items}
   defp compiled_list_check_error(:max_items), do: {:error, :more_than_max_items}
 
@@ -837,122 +652,15 @@ defmodule ExBrand.Schema.Runtime do
     end
   end
 
-  defp run_custom_validator(value, base_schema, opts) do
-    Validator.apply_custom(
-      constraint_input(base_schema, value),
-      value,
-      Keyword.get(opts, :validate),
-      Keyword.get(opts, :error, :invalid_value),
-      &validate_schema(&1, base_schema)
-    )
-  end
-
   defp constraint_input({:compiled, :terminal, {:brand, _module}, _opts}, value),
     do: ExBrand.unwrap!(value)
 
   defp constraint_input({:compiled, _kind, _data, _opts}, value), do: value
 
-  defp constraint_input(schema, value) do
-    case Definition.resolve_terminal_schema(schema) do
-      {:ok, {:brand, _module}} -> ExBrand.unwrap!(value)
-      _ -> value
-    end
-  end
-
   defp wrap_error(reason, opts) do
     case Keyword.fetch(opts, :error) do
       {:ok, custom_error} -> custom_error
       :error -> reason
-    end
-  end
-
-  defp check_minimum(value, opts) do
-    case Keyword.fetch(opts, :minimum) do
-      {:ok, minimum} when is_number(minimum) ->
-        if value >= minimum, do: :ok, else: {:error, :less_than_minimum}
-
-      {:ok, _other} ->
-        {:error, :invalid_schema}
-
-      :error ->
-        :ok
-    end
-  end
-
-  defp check_maximum(value, opts) do
-    case Keyword.fetch(opts, :maximum) do
-      {:ok, maximum} when is_number(maximum) ->
-        if value <= maximum, do: :ok, else: {:error, :greater_than_maximum}
-
-      {:ok, _other} ->
-        {:error, :invalid_schema}
-
-      :error ->
-        :ok
-    end
-  end
-
-  defp check_min_length(length, opts) do
-    case Keyword.fetch(opts, :min_length) do
-      {:ok, minimum} when is_integer(minimum) and minimum >= 0 ->
-        if length >= minimum, do: :ok, else: {:error, :shorter_than_min_length}
-
-      {:ok, _other} ->
-        {:error, :invalid_schema}
-
-      :error ->
-        :ok
-    end
-  end
-
-  defp check_max_length(length, opts) do
-    case Keyword.fetch(opts, :max_length) do
-      {:ok, maximum} when is_integer(maximum) and maximum >= 0 ->
-        if length <= maximum, do: :ok, else: {:error, :longer_than_max_length}
-
-      {:ok, _other} ->
-        {:error, :invalid_schema}
-
-      :error ->
-        :ok
-    end
-  end
-
-  defp check_min_items(items, opts) do
-    case Keyword.fetch(opts, :min_items) do
-      {:ok, minimum} when is_integer(minimum) and minimum >= 0 ->
-        if length(items) >= minimum, do: :ok, else: {:error, :fewer_than_min_items}
-
-      {:ok, _other} ->
-        {:error, :invalid_schema}
-
-      :error ->
-        :ok
-    end
-  end
-
-  defp check_max_items(items, opts) do
-    case Keyword.fetch(opts, :max_items) do
-      {:ok, maximum} when is_integer(maximum) and maximum >= 0 ->
-        if length(items) <= maximum, do: :ok, else: {:error, :more_than_max_items}
-
-      {:ok, _other} ->
-        {:error, :invalid_schema}
-
-      :error ->
-        :ok
-    end
-  end
-
-  defp check_unique_items(items, opts) do
-    if check_deferred?(:unique_items) do
-      :ok
-    else
-      case Keyword.get(opts, :unique_items, false) do
-        true -> if unique_items?(items), do: :ok, else: {:error, :items_not_unique}
-        false -> :ok
-        _other -> {:error, :invalid_schema}
-      end
     end
   end
 

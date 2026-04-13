@@ -90,6 +90,20 @@ defmodule ExBrand.DSLTest do
                  end
   end
 
+  test "legacy nested defbrand spec is rejected" do
+    assert_raise ArgumentError,
+                 ~r/legacy nested defbrand spec is no longer supported/,
+                 fn ->
+                   Code.compile_string("""
+                   defmodule LegacyNestedDefbrandSpec do
+                     use ExBrand
+
+                     defbrand UserID, {{:integer, []}, [name: "User ID"]}
+                   end
+                   """)
+                 end
+  end
+
   test "standalone brand definition is rejected" do
     assert_raise ArgumentError,
                  ~r/no longer defines standalone brands/,

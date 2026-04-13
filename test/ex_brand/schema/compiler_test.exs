@@ -4,18 +4,14 @@ defmodule ExBrand.Schema.CompilerTest do
   alias ExBrand.Schema.Compiler
   alias ExBrand.TestSupport.Fixtures.AddressSchema
 
-  test "build_field_ast!/1 validates field name and field options" do
+  test "build_field_ast!/1 validates field name" do
     assert_raise ArgumentError, ~r/field name must be an atom/, fn ->
-      Compiler.build_field_ast!({"age", :integer, []})
-    end
-
-    assert_raise ArgumentError, ~r/field options must be a keyword list/, fn ->
-      Compiler.build_field_ast!({:age, :integer, %{}})
+      Compiler.build_field_ast!({"age", :integer})
     end
   end
 
   test "build_field_ast!/1 returns field AST for valid definitions" do
-    ast = Compiler.build_field_ast!({:age, :integer, [required: false]})
+    ast = Compiler.build_field_ast!({:age, {:integer, optional: true}})
 
     assert Macro.to_string(ast) == "{:age, {:integer, optional: true}}"
   end

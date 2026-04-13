@@ -4,7 +4,6 @@ defmodule ExBrand.Schema.Definition do
   alias ExBrand.Base
   alias ExBrand.Schema.Compiler
 
-  @field_alias_keys [:required, :from]
   @schema_option_keys [
     :allow_extra_fields,
     :default,
@@ -209,25 +208,6 @@ defmodule ExBrand.Schema.Definition do
   defp maybe_append_unique_items_check(checks, true), do: [:unique_items | checks]
   defp maybe_append_unique_items_check(checks, _value), do: checks
 
-  @spec merge_field_opts(term(), keyword()) :: {term(), keyword()}
-  def merge_field_opts(schema, opts) do
-    {base_schema, schema_opts} = split_schema_opts(schema)
-    merged_opts = Enum.reverse(Enum.reverse(schema_opts), normalize_field_opts(opts))
-    {base_schema, merged_opts}
-  end
-
-  @spec normalize_field_opts(keyword()) :: keyword()
-  def normalize_field_opts(opts) do
-    Enum.flat_map(opts, fn
-      {:required, false} -> [optional: true]
-      {:required, true} -> [optional: false]
-      {:from, field_name} -> [field: field_name]
-      {key, value} when key in @schema_option_keys -> [{key, value}]
-      {key, _value} when key in @field_alias_keys -> []
-      {key, _value} -> raise ArgumentError, "unsupported field option: #{inspect(key)}"
-    end)
-  end
-
   @spec resolve_terminal_schema(term()) ::
           {:ok, {:base, term()} | {:brand, module()} | {:schema, module()}} | :error
   def resolve_terminal_schema(schema) when is_atom(schema) do
@@ -249,7 +229,7 @@ defmodule ExBrand.Schema.Definition do
   end
 
   def resolve_terminal_schema({schema, opts}) when is_list(opts) do
-    {_schema_opts, type_opts} = Keyword.split(opts, [:required, :from | @schema_option_keys])
+    {_schema_opts, type_opts} = Keyword.split(opts, @schema_option_keys)
 
     cond do
       schema_module?(schema) ->

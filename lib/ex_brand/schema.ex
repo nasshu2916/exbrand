@@ -8,8 +8,7 @@ defmodule ExBrand.Schema do
       field :email, {:string, format: :email}
       field :tags, {[{:string, min_length: 1}], min_items: 1}
 
-  field option として渡していた `required:`, `default:`, `from:`, `validate:`, `error:`
-  も後方互換のため引き続き利用できる。
+  `default`, `validate`, `error` などの制約は schema tuple 側に指定する。
   """
 
   alias ExBrand.Schema.{Codegen, Compiler, Definition, Runtime}
@@ -23,6 +22,7 @@ defmodule ExBrand.Schema do
           | [schema()]
           | %{atom() => schema()}
   @type schema_definition() :: schema()
+  @type compiled_schema() :: ExBrand.Schema.Definition.runtime_node()
 
   @doc """
   Schema DSL を導入する。
@@ -32,7 +32,7 @@ defmodule ExBrand.Schema do
     tolerant = Keyword.get(opts, :tolerant, false)
 
     quote bind_quoted: [tolerant: tolerant] do
-      import ExBrand.Schema, only: [field: 2, field: 3]
+      import ExBrand.Schema, only: [field: 2]
 
       Module.register_attribute(__MODULE__, :ex_brand_schema_fields, accumulate: true)
       Module.put_attribute(__MODULE__, :ex_brand_schema_tolerant, tolerant)
@@ -60,14 +60,13 @@ defmodule ExBrand.Schema do
   @doc """
   schema field を 1 つ定義する。
   """
-  defmacro field(name, schema, opts \\ []) do
+  defmacro field(name, schema) do
     expanded_schema = Definition.expand_schema(schema, __CALLER__)
 
     quote do
       @ex_brand_schema_fields {
         unquote(Macro.escape(name)),
-        unquote(Macro.escape(expanded_schema)),
-        unquote(Macro.escape(opts))
+        unquote(Macro.escape(expanded_schema))
       }
     end
   end
@@ -110,6 +109,7 @@ defmodule ExBrand.Schema do
       def __schema__, do: unquote(schema_ast)
 
       @doc false
+      @spec __compiled_schema__() :: ExBrand.Schema.compiled_schema()
       def __compiled_schema__, do: unquote(Macro.escape(compiled_schema))
 
       unquote(root_validator_ast)
@@ -139,7 +139,7 @@ defmodule ExBrand.Schema do
   @doc """
   schema 定義に従って値を検証する。
   """
-  @spec validate(term(), schema_definition()) :: {:ok, term()} | {:error, term()}
+  @spec validate(term(), compiled_schema()) :: {:ok, term()} | {:error, term()}
   def validate(value, schema) do
     if Definition.compiled_runtime_schema?(schema) do
       Runtime.validate(value, schema)
@@ -152,13 +152,13 @@ defmodule ExBrand.Schema do
   @doc """
   schema 定義をコンパイル済み形式へ変換する。
   """
-  @spec compile!(schema_definition()) :: term()
+  @spec compile!(schema_definition()) :: compiled_schema()
   def compile!(schema), do: Definition.compile_runtime_schema!(schema)
 
   @doc """
   schema 定義に従って値を検証し、失敗時は例外を送出する。
   """
-  @spec validate!(term(), module(), schema_definition()) :: term()
+  @spec validate!(term(), module(), compiled_schema()) :: term()
   def validate!(value, module, schema) do
     case validate(value, schema) do
       {:ok, normalized_value} ->

@@ -21,12 +21,9 @@ defmodule ExBrand.Schema.DefinitionTest do
     refute expanded_schema.address == {:__aliases__, [], [:AddressSchema]}
   end
 
-  test "split_schema_opts/1 and merge_field_opts/2 normalize field aliases" do
+  test "split_schema_opts/1 returns schema and options" do
     assert Definition.split_schema_opts(:string) == {:string, []}
     assert Definition.split_schema_opts({:string, min_length: 2}) == {:string, [min_length: 2]}
-
-    assert Definition.merge_field_opts({:string, min_length: 2}, required: false, from: "name") ==
-             {:string, [min_length: 2, optional: true, field: "name"]}
   end
 
   test "compile_runtime_schema!/1 resolves runtime nodes ahead of validation" do
@@ -100,12 +97,6 @@ defmodule ExBrand.Schema.DefinitionTest do
     assert Definition.compiled_runtime_metadata(list_opts)
     assert Definition.compiled_runtime_metadata(no_item_opts)
     assert Definition.compiled_runtime_metadata(no_list_opts)
-  end
-
-  test "normalize_field_opts/1 rejects unsupported field options" do
-    assert_raise ArgumentError, ~r/unsupported field option: :unknown/, fn ->
-      Definition.normalize_field_opts(unknown: true)
-    end
   end
 
   test "resolve_terminal_schema/1 distinguishes base, brand, schema, and invalid definitions" do

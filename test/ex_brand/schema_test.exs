@@ -106,13 +106,13 @@ defmodule ExBrand.SchemaTest do
   test "module schema keeps raw definition and also exposes compiled schema" do
     assert UserSchema.__schema__() ==
              {%{
-                user_id: {Types.UserID, []},
-                email: {Types.Email, []},
+                user_id: Types.UserID,
+                email: Types.Email,
                 age: {:integer, minimum: 18, error: :too_young},
                 nickname: {:string, optional: true},
                 status: {:string, default: "active"},
                 contact_email: {Types.Email, field: "contactEmail"},
-                address: {AddressSchema, []},
+                address: AddressSchema,
                 tags:
                   {[{:string, min_length: 2}], min_items: 1, unique_items: true, optional: true},
                 published_at: {:string, format: :datetime, optional: true}
