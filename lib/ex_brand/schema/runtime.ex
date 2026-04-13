@@ -2,7 +2,7 @@ defmodule ExBrand.Schema.Runtime do
   @moduledoc false
 
   alias ExBrand.Schema.Definition
-  alias ExBrand.Schema.Runtime.{Config, ListValidator, MapValidator}
+  alias ExBrand.Schema.Runtime.{Config, ConstraintValidator, ListValidator, MapValidator}
   alias ExBrand.Validator
 
   @type key_lookup_context() :: MapValidator.key_lookup_context()
@@ -58,11 +58,11 @@ defmodule ExBrand.Schema.Runtime do
   defp validate_schema(value, {:compiled, kind, data, opts}),
     do: validate_compiled(value, kind, data, opts)
 
-  defp validate_compiled_typed_value(value, :map, schema_fields, opts) do
+  defp validate_compiled_typed_value(value, :map, schema_fields, _opts) do
     MapValidator.validate_map(
       value,
       schema_fields,
-      fail_fast?(opts),
+      schema_fail_fast_enabled?(),
       &validate_schema/2,
       Definition.internal_error_key()
     )
@@ -72,7 +72,7 @@ defmodule ExBrand.Schema.Runtime do
     ListValidator.validate_list(
       value,
       item_schema,
-      fail_fast?(opts),
+      schema_fail_fast_enabled?(),
       &validate_schema/2,
       compiled_list_checks(opts) || [],
       check_deferred?(:unique_items)
@@ -100,11 +100,6 @@ defmodule ExBrand.Schema.Runtime do
       nil -> nil
       metadata -> metadata.list_checks
     end
-  end
-
-  defp fail_fast?(opts) do
-    _ = opts
-    schema_fail_fast_enabled?()
   end
 
   defp empty_compiled_runtime_metadata do
@@ -143,112 +138,8 @@ defmodule ExBrand.Schema.Runtime do
   def extra_fields(value, consumed_keys), do: MapValidator.extra_fields(value, consumed_keys)
 
   defp apply_compiled_constraints(value, base_schema, metadata) do
-    constraint_input = constraint_input(base_schema, value)
-    generic_context = build_compiled_generic_context(constraint_input)
-
-    with :ok <-
-           run_compiled_generic_checks(constraint_input, metadata.generic_checks, generic_context),
-         {:ok, normalized_value} <-
-           run_compiled_custom_validator(
-             value,
-             base_schema,
-             metadata.validator,
-             metadata.validator_error
-           ) do
-      {:ok, normalized_value}
-    end
+    ConstraintValidator.apply_constraints(value, base_schema, metadata, &validate_schema/2)
   end
-
-  defp build_compiled_generic_context(value) when is_binary(value),
-    do: %{string_length: String.length(value)}
-
-  defp build_compiled_generic_context(_value), do: %{}
-
-  defp run_compiled_generic_checks(_value, [], _context), do: :ok
-
-  defp run_compiled_generic_checks(value, [{:enum, enum_values} | rest], context) do
-    if check_deferred?(:enum) do
-      run_compiled_generic_checks(value, rest, context)
-    else
-      if value in enum_values,
-        do: run_compiled_generic_checks(value, rest, context),
-        else: {:error, :not_in_enum}
-    end
-  end
-
-  defp run_compiled_generic_checks(value, [{:minimum, minimum} | rest], context) do
-    if value >= minimum,
-      do: run_compiled_generic_checks(value, rest, context),
-      else: {:error, :less_than_minimum}
-  end
-
-  defp run_compiled_generic_checks(value, [{:maximum, maximum} | rest], context) do
-    if value <= maximum,
-      do: run_compiled_generic_checks(value, rest, context),
-      else: {:error, :greater_than_maximum}
-  end
-
-  defp run_compiled_generic_checks(value, [{:min_length, minimum} | rest], %{
-         string_length: length
-       }) do
-    if length >= minimum,
-      do: run_compiled_generic_checks(value, rest, %{string_length: length}),
-      else: {:error, :shorter_than_min_length}
-  end
-
-  defp run_compiled_generic_checks(value, [{:max_length, maximum} | rest], %{
-         string_length: length
-       }) do
-    if length <= maximum,
-      do: run_compiled_generic_checks(value, rest, %{string_length: length}),
-      else: {:error, :longer_than_max_length}
-  end
-
-  defp run_compiled_generic_checks(value, [{:format, :email} | rest], context) do
-    if check_deferred?(:format) or check_deferred?(:regex) do
-      run_compiled_generic_checks(value, rest, context)
-    else
-      with :ok <- validate_email_format(value) do
-        run_compiled_generic_checks(value, rest, context)
-      end
-    end
-  end
-
-  defp run_compiled_generic_checks(value, [{:format, :datetime} | rest], context) do
-    if check_deferred?(:format) or check_deferred?(:regex) do
-      run_compiled_generic_checks(value, rest, context)
-    else
-      with :ok <- validate_datetime_format(value) do
-        run_compiled_generic_checks(value, rest, context)
-      end
-    end
-  end
-
-  defp run_compiled_custom_validator(value, base_schema, validator, error) do
-    Validator.apply_custom(
-      constraint_input(base_schema, value),
-      value,
-      validator,
-      error,
-      &validate_schema(&1, base_schema)
-    )
-  end
-
-  defp validate_email_format(value) do
-    if String.match?(value, ~r/^[^\s]+@[^\s]+\.[^\s]+$/), do: :ok, else: {:error, :invalid_format}
-  end
-
-  defp validate_datetime_format(value) do
-    case DateTime.from_iso8601(value) do
-      {:ok, _datetime, _offset} -> :ok
-      _ -> {:error, :invalid_format}
-    end
-  end
-
-  defp constraint_input({:compiled, :terminal, {:brand, _module}, _opts}, value),
-    do: ExBrand.unwrap!(value)
-
-  defp constraint_input({:compiled, _kind, _data, _opts}, value), do: value
 
   defp wrap_error(reason, opts) do
     case Keyword.fetch(opts, :error) do
