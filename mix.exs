@@ -45,8 +45,7 @@ defmodule ExBrand.MixProject do
       extras: [
         "README.md",
         "docs/getting-started.md",
-        "docs/api-guide.md",
-        "docs/benchmarking.md"
+        "docs/api-guide.md"
       ],
       source_ref: "main"
     ]
