@@ -18,11 +18,13 @@ defmodule ExBrand.Adapter.JSONTest do
     end
   end
 
-  test "json encoder adapter delegates to the raw value encoder" do
-    user_id = Types.UserID.new!(42)
-    email = NormalizedEmail.new!("  USER@EXAMPLE.COM  ")
+  if Code.ensure_loaded?(JSON) do
+    test "json encoder adapter delegates to the raw value encoder" do
+      user_id = Types.UserID.new!(42)
+      email = NormalizedEmail.new!("  USER@EXAMPLE.COM  ")
 
-    assert JSON.encode!(user_id) == JSON.encode!(42)
-    assert JSON.encode!(email) == JSON.encode!("user@example.com")
+      assert JSON.encode!(user_id) == JSON.encode!(42)
+      assert JSON.encode!(email) == JSON.encode!("user@example.com")
+    end
   end
 end
