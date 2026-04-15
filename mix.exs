@@ -44,8 +44,11 @@ defmodule ExBrand.MixProject do
       main: "readme",
       extras: [
         "README.md",
+        "README_ja.md",
         "docs/getting-started.md",
-        "docs/api-guide.md"
+        "docs/getting-started_ja.md",
+        "docs/api-guide.md",
+        "docs/api-guide_ja.md"
       ],
       source_ref: "main"
     ]

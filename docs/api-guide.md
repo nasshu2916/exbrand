@@ -1,12 +1,14 @@
 # API Guide
 
-このドキュメントは ExBrand の公開 API と、`ExBrand.Schema` の制約を仕様ベースで整理したものです。
+This document summarizes the public ExBrand API and the supported `ExBrand.Schema` constraints based on the current implementation.
+
+Japanese version: [api-guide_ja.md](/Users/naoya/src/exbrand/docs/api-guide_ja.md)
 
 ## `ExBrand`
 
 ### `use ExBrand`
 
-brand DSL を導入します。オプションは受け付けません。
+Introduces the brand DSL. It does not accept options.
 
 ```elixir
 defmodule MyApp.Accounts.Types do
@@ -16,7 +18,7 @@ end
 
 ### `defbrand name, spec`
 
-親モジュール配下に brand モジュールを生成します。
+Generates a brand module under the parent module.
 
 ```elixir
 defbrand UserID, :integer
@@ -24,7 +26,7 @@ defbrand Email, {:string, name: "Email Address"}
 defbrand UserToken, {MyApp.Types.PrefixedString, prefix: "usr_"}
 ```
 
-`spec` は次のどれかです。
+`spec` can be one of:
 
 - `:integer`
 - `:string`
@@ -32,9 +34,9 @@ defbrand UserToken, {MyApp.Types.PrefixedString, prefix: "usr_"}
 - `custom_base_module`
 - `{base, opts}`
 
-### Brand オプション
+### Brand Options
 
-`opts` に含められる brand 向けオプションは次のとおりです。
+Brand-specific options are:
 
 - `validate: (term() -> term())`
 - `error: term()`
@@ -42,7 +44,7 @@ defbrand UserToken, {MyApp.Types.PrefixedString, prefix: "usr_"}
 - `generator: term() | (() -> term())`
 - `name: String.t() | atom()`
 
-base module 側に渡すオプションと brand オプションは同じ keyword に書けます。ExBrand 側が `validate:` などの brand オプションを切り分けます。
+Custom base options and brand options can coexist in the same keyword list. ExBrand splits out `validate:` and the other brand-level keys internally.
 
 ```elixir
 defbrand UserToken,
@@ -52,9 +54,9 @@ defbrand UserToken,
           name: "User Token"}
 ```
 
-### 生成される brand API
+### Generated Brand API
 
-各 brand モジュールには次の API が生成されます。
+Each brand module exposes:
 
 - `new/1`
 - `new!/1`
@@ -68,41 +70,41 @@ defbrand UserToken,
 
 #### `new/1`
 
-raw 値を brand 化します。
+Constructs a branded value from a raw value.
 
 ```elixir
 Types.UserID.new(1)
 #=> {:ok, %Types.UserID{}}
 ```
 
-戻り値:
+Return values:
 
 - `{:ok, brand}`
 - `{:error, reason}`
 
 #### `new!/1`
 
-`new/1` の bang 版です。失敗時は `ExBrand.Error` を送出します。
+Bang version of `new/1`. Raises `ExBrand.Error` on failure.
 
 #### `unsafe_new/1`
 
-base 検証も custom validator も通さずに brand を生成します。高信頼な内部境界でのみ使う前提です。
+Constructs a brand without base validation or custom validation. This is intended for trusted internal boundaries only.
 
 #### `unwrap/1`
 
-brand から raw 値を取り出します。署名検証が有効な場合は forged value や mutation を検出します。
+Extracts the raw value. If signature verification is enabled, forged or mutated values are rejected.
 
 #### `brand?/1`
 
-その brand モジュールが生成した値かを判定します。
+Checks whether the value belongs to that exact brand module.
 
 #### `gen/0`
 
-`generator:` に入れた値を返します。0 引数関数を渡していた場合は、このタイミングで評価されます。
+Returns the configured `generator:` value. If `generator:` is a zero-arity function, it is evaluated when `gen/0` is called.
 
 #### `__meta__/0`
 
-brand 定義の反射情報を返します。
+Returns reflection metadata for the brand definition.
 
 ```elixir
 %{
@@ -117,15 +119,15 @@ brand 定義の反射情報を返します。
 
 ### `ExBrand.unwrap!/1`
 
-任意の ExBrand 値から raw 値を取り出します。brand 以外を渡すと `ArgumentError` を送出します。
+Extracts the raw value from any ExBrand value. Raises `ArgumentError` for non-brand values.
 
 ### `ExBrand.unwrap/1`
 
-brand なら raw 値を返し、brand でなければ入力をそのまま返します。
+Returns the raw value for brands and passes non-brand values through unchanged.
 
 ## `ExBrand.Base`
 
-custom base module は次の callback を実装します。
+A custom base module must implement:
 
 ```elixir
 @callback type_ast(keyword()) :: Macro.t()
@@ -133,25 +135,25 @@ custom base module は次の callback を実装します。
 @callback ecto_type(keyword()) :: term()
 ```
 
-役割は次のとおりです。
+Responsibilities:
 
-- `type_ast/1`: brand の `raw()` 型を生成する
-- `validate/2`: raw 値がその base に適合するか判定する
-- `ecto_type/1`: Ecto 連携時の型を返す
+- `type_ast/1`: produces the brand `raw()` type
+- `validate/2`: validates whether a raw value matches the base
+- `ecto_type/1`: returns the Ecto type used for integration
 
 ## `ExBrand.Type.Email`
 
-組み込み custom base です。raw 値は `String.t()`、Ecto 型は `:string`、不正な email には `{:error, :invalid_email}` を返します。
+Built-in custom base for email strings. Its raw type is `String.t()`, its Ecto type is `:string`, and invalid values return `{:error, :invalid_email}`.
 
 ## `ExBrand.Schema`
 
 ### `use ExBrand.Schema`
 
-schema DSL を導入します。オプションは受け付けません。
+Introduces the schema DSL. It does not accept options.
 
 ### `field/2`
 
-1 フィールド分の schema を定義します。
+Defines one schema field.
 
 ```elixir
 field :user_id, Types.UserID
@@ -161,9 +163,9 @@ field :tags, {[{:string, min_length: 2}], min_items: 1}
 field :address, %{city: :string, zip: {:string, min_length: 5, max_length: 5}}
 ```
 
-### Schema の形
+### Supported Schema Shapes
 
-`ExBrand.Schema` が扱う schema は次のいずれかです。
+`ExBrand.Schema` supports:
 
 - scalar base: `:any | :boolean | :integer | :number | :null | :string | :binary`
 - brand module
@@ -172,13 +174,13 @@ field :address, %{city: :string, zip: {:string, min_length: 5, max_length: 5}}
 - `[item_schema]`
 - `%{field_name => schema}`
 
-list schema は必ず 1 要素のリストで表現します。`[:integer, :string]` のような複数要素 list は無効です。
+List schemas must be single-element lists. A list such as `[:integer, :string]` is invalid.
 
-### フィールドオプション
+### Field Options
 
-利用できるオプションは schema の種類で異なります。
+Available options depend on the schema shape.
 
-#### 共通
+#### Common
 
 - `enum: list()`
 - `error: term()`
@@ -186,59 +188,59 @@ list schema は必ず 1 要素のリストで表現します。`[:integer, :stri
 - `nullable: boolean()`
 - `validate: (term() -> term())`
 
-#### 数値
+#### Numeric
 
 - `minimum: number()`
 - `maximum: number()`
 
-#### 文字列 / binary
+#### String / binary
 
 - `min_length: non_neg_integer()`
 - `max_length: non_neg_integer()`
 - `format: :email | :datetime`
 
-#### list
+#### List
 
 - `min_items: non_neg_integer()`
 - `max_items: non_neg_integer()`
 - `unique_items: boolean()`
 
-map schema や nested schema module に `minimum:` のような不適切な制約を付けると compile time で失敗します。
+Unsupported constraints on map schemas or nested schema modules fail at compile time.
 
 ### `validate/1`
 
-`use ExBrand.Schema` したモジュールごとに生成されます。
+Generated for every module that uses `ExBrand.Schema`.
 
 ```elixir
 MySchema.validate(params)
 ```
 
-戻り値:
+Return values:
 
 - `{:ok, normalized_value}`
 - `{:error, errors}`
 
-`errors` は map schema ならフィールド単位、list schema なら index 単位で返ります。list 自体の制約違反は `:__self__`、未定義フィールドは `:__extra_fields__` に入ります。
+For map schemas, `errors` is keyed by field name. For list schemas, it is keyed by item index. List-level errors are stored in `:__self__`, and unknown map fields are stored in `:__extra_fields__`.
 
 ### `validate!/1`
 
-失敗時に `ArgumentError` を送出します。
+Raises `ArgumentError` on validation failure.
 
 ### `valid?/1`
 
-`validate/1` の成否を boolean で返します。
+Returns a boolean indicating whether `validate/1` succeeds.
 
 ### `__schema__/0`
 
-元の schema 定義を返します。
+Returns the original schema definition.
 
 ### `__compiled_schema__/0`
 
-コンパイル済み schema を返します。
+Returns the compiled schema.
 
 ### `ExBrand.Schema.compile!/1`
 
-inline schema を実行時にコンパイルしたいときに使います。
+Compiles an inline schema for runtime use.
 
 ```elixir
 schema = ExBrand.Schema.compile!({%{name: :string, age: {:integer, minimum: 18}}, []})
@@ -247,11 +249,11 @@ ExBrand.Schema.validate(%{name: "naoya", age: 20}, schema)
 
 ### `ExBrand.Schema.validate/2`
 
-`compile!/1` した schema を検証します。未コンパイルの schema を渡すと `ArgumentError` になります。
+Validates against a schema compiled with `compile!/1`. Passing an uncompiled schema raises `ArgumentError`.
 
 ### `ExBrand.Schema.set_runtime_config!/1`
 
-実行時設定を更新します。
+Updates runtime configuration.
 
 ```elixir
 ExBrand.Schema.set_runtime_config!(fail_fast: true)
@@ -260,12 +262,12 @@ ExBrand.Schema.set_runtime_config!(fail_fast: :unset)
 ExBrand.Schema.set_runtime_config!(deferred_checks: :unset)
 ```
 
-指定できるオプション:
+Supported options:
 
 - `fail_fast: true | false | :unset`
 - `deferred_checks: list() | :unset`
 
-許可される deferred check:
+Allowed deferred checks:
 
 - `:enum`
 - `:format`
@@ -273,36 +275,36 @@ ExBrand.Schema.set_runtime_config!(deferred_checks: :unset)
 - `:unique_items`
 - `:deep_nested`
 
-現在の実装で実際に効果が確認できるのは `:enum`, `:format`, `:unique_items` です。
+In the current implementation, confirmed runtime effects exist for `:enum`, `:format`, and `:unique_items`.
 
-## 連携 API
+## Integration APIs
 
 ### Ecto
 
-brand モジュールに次が生成されます。
+Brand modules expose:
 
 - `ecto_type/0`
 - `ecto_parameterized_type/0`
 
-どちらも `Ecto` / `Ecto.ParameterizedType` がロードされている場合のみ使えます。
+These are only usable when `Ecto` / `Ecto.ParameterizedType` are loaded.
 
 ### JSON
 
-`Jason.Encoder` と `JSON.Encoder` が存在すれば、brand は raw 値として encode されます。
+If `Jason.Encoder` or `JSON.Encoder` exists, brands are encoded as raw values.
 
 ### Phoenix
 
-`Phoenix.Param` と `Phoenix.HTML.Safe` が存在すれば、raw 値側の protocol 実装に委譲します。
+If `Phoenix.Param` and `Phoenix.HTML.Safe` exist, ExBrand delegates to the raw value's protocol implementations.
 
-## 例外
+## Exceptions
 
 ### `ExBrand.Error`
 
-`new!/1` が失敗したときに送出されます。主なフィールドは次のとおりです。
+Raised by `new!/1`. Main fields:
 
 - `:reason`
 - `:module`
 - `:value`
 - `:message`
 
-`name:` を指定した brand では、例外メッセージにもその表示名が使われます。
+If a brand defines `name:`, that display name is also used in the exception message.

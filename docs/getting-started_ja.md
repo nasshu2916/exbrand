@@ -1,8 +1,10 @@
 # Getting Started
 
-This guide covers the shortest path to introducing ExBrand into an existing Elixir application and using both brands and schemas in practice.
+このドキュメントは、ExBrand を既存の Elixir アプリへ導入して brand と schema を使い始めるまでの最短手順をまとめたものです。
 
-## 1. Add the Dependency
+英語版: [getting-started.md](/Users/naoya/src/exbrand/docs/getting-started.md)
+
+## 1. 依存を追加する
 
 ```elixir
 defp deps do
@@ -16,11 +18,9 @@ end
 mix deps.get
 ```
 
-Japanese version: [getting-started_ja.md](/Users/naoya/src/exbrand/docs/getting-started_ja.md)
+## 2. Brand を定義する
 
-## 2. Define Brands
-
-Start by creating a module that groups brands for a feature.
+まずは feature 単位で brand をまとめるモジュールを作ります。
 
 ```elixir
 defmodule MyApp.Accounts.Types do
@@ -43,12 +43,12 @@ defmodule MyApp.Accounts.Types do
 end
 ```
 
-This generates:
+これで次のモジュールが生成されます。
 
 - `MyApp.Accounts.Types.UserID`
 - `MyApp.Accounts.Types.Email`
 
-## 3. Use the Brands
+## 3. Brand を使う
 
 ```elixir
 alias MyApp.Accounts.Types
@@ -65,11 +65,11 @@ Types.Email.new!("  USER@EXAMPLE.COM  ")
 #=> "user@example.com"
 ```
 
-`new/1` returns failures as values, while `new!/1` raises `ExBrand.Error`.
+`new/1` は失敗を戻り値で返し、`new!/1` は `ExBrand.Error` を送出します。
 
-## 4. Add Rules and Metadata
+## 4. ルールを追加する
 
-Brands can carry validation rules and related metadata.
+brand には複数の付加情報を持たせられます。
 
 ```elixir
 defmodule MyApp.Accounts.Types do
@@ -84,17 +84,17 @@ defmodule MyApp.Accounts.Types do
 end
 ```
 
-Main options:
+使い分けは次のとおりです。
 
-- `validate:` custom validation or normalization
-- `error:` error reason used when `validate:` returns `false`
-- `generator:` generator metadata
-- `name:` display name
-- `derive:` protocol derivation
+- `validate:` 独自検証や正規化
+- `error:` `validate:` が `false` を返したときのエラー理由
+- `generator:` generator のメタデータ
+- `name:` 表示名
+- `derive:` protocol 実装の導出
 
-## 5. Use a Custom Base
+## 5. Custom Base を使う
 
-If built-in bases are not enough, implement `ExBrand.Base`.
+組み込み base で足りない場合は `ExBrand.Base` を実装します。
 
 ```elixir
 defmodule MyApp.Types.PrefixedString do
@@ -118,9 +118,9 @@ defmodule MyApp.Accounts.Types do
 end
 ```
 
-## 6. Introduce the Schema DSL
+## 6. Schema DSL を導入する
 
-Use `ExBrand.Schema` at API boundaries and other external input edges.
+API 入口の検証には `ExBrand.Schema` を使います。
 
 ```elixir
 defmodule MyApp.Accounts.UserPayload do
@@ -142,11 +142,11 @@ MyApp.Accounts.UserPayload.validate(%{
 })
 ```
 
-Successful validation returns a normalized map that can contain brand values. Failures return a field-indexed error map.
+成功時は brand を含む正規化済み map が返り、失敗時はフィールドごとのエラー map が返ります。
 
-## 7. Integrate with Ecto
+## 7. Ecto へ組み込む
 
-When Ecto is loaded, each brand module exposes `ecto_type/0`.
+Ecto がロードされていれば、brand モジュールに `ecto_type/0` が生成されます。
 
 ```elixir
 schema "users" do
@@ -155,35 +155,35 @@ schema "users" do
 end
 ```
 
-In changesets, you can pass raw values to `cast/4` and let ExBrand convert them into brands.
+changeset では raw 値をそのまま `cast/4` に渡せます。ExBrand 側が brand に変換します。
 
-## 8. Integrate with Phoenix / JSON
+## 8. Phoenix / JSON へ組み込む
 
-If these libraries exist, ExBrand adds protocol implementations automatically.
+次のライブラリが存在すると、自動で protocol 実装が入ります。
 
-- `Jason` or `JSON`
+- `Jason` または `JSON`
 - `Phoenix.Param`
 - `Phoenix.HTML.Safe`
 
-That means many controller and rendering paths can operate on brands directly. If you want stricter response shaping, explicitly unwrap before building the payload.
+そのため、controller や JSON view では raw 値へ手で戻さなくても動く場面があります。ただしレスポンス設計を明示したいなら、`unwrap/1` を使って raw 値へ戻してから組み立てる方が読みやすいです。
 
-## 9. Adjust Runtime Behavior
+## 9. 実行時設定を調整する
 
-Schema error collection behavior can be changed at runtime.
+schema のエラー収集方針は実行時に切り替えられます。
 
 ```elixir
 ExBrand.Schema.set_runtime_config!(fail_fast: true)
 ExBrand.Schema.set_runtime_config!(deferred_checks: [:enum, :format])
 ```
 
-When you change this in tests, resetting to `:unset` keeps the effect local.
+テスト中に切り替える場合は、終了時に `:unset` で戻しておくと影響範囲を限定できます。
 
-## 10. Enable Signature Verification
+## 10. 署名検証を有効にする
 
-If you need tamper detection for brand structs, enable:
+brand struct の改ざん検知が必要なら、アプリ設定で有効化します。
 
 ```elixir
 config :ex_brand, :signature_verification, true
 ```
 
-When enabled, brand structs carry a signature and forged or mutated values are rejected by `unwrap/1` and related adapters.
+有効時は brand 内部に署名が保存され、改ざん済み struct に対する `unwrap/1` や周辺 adapter の利用が失敗します。

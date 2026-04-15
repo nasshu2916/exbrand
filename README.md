@@ -1,25 +1,31 @@
 # ExBrand
 
-ExBrand は、Elixir のプリミティブ値に意味的な境界を与えるための brand DSL です。`integer()` や `String.t()` をそのまま渡し回す代わりに、`UserID` や `Email` のような専用型を生成し、生成時に検証と正規化をまとめて適用できます。
+ExBrand is a DSL for giving semantic boundaries to primitive Elixir values. Instead of passing around plain `integer()` or `String.t()` values, you can generate dedicated types such as `UserID` or `Email` and apply validation and normalization when those values are constructed.
 
-このリポジトリには次の 2 つの機能があります。
+This repository provides two core features:
 
-- `ExBrand`: brand 型を定義する DSL
-- `ExBrand.Schema`: API 入力のような map/list を宣言的に検証する schema DSL
+- `ExBrand`: a DSL for defining brand types
+- `ExBrand.Schema`: a declarative schema DSL for validating map/list payloads such as API input
 
-## 何ができるか
+Japanese documentation is also available:
 
-- `defbrand` で distinct な brand 型を生成する
-- `new/1` と `new!/1` で raw 値を安全に brand 化する
-- `validate:` で独自検証や正規化を追加する
-- `generator:` や `derive:` を brand 定義に持たせる
-- `Ecto.Type` / `Ecto.ParameterizedType` を自動生成する
-- `Jason.Encoder` / `JSON.Encoder` / `Phoenix.Param` / `Phoenix.HTML.Safe` を条件付きで実装する
-- `ExBrand.Schema` で入れ子の map/list を検証し、brand を含む正規化済みデータを返す
+- [README_ja.md](/Users/naoya/src/exbrand/README_ja.md)
+- [docs/getting-started_ja.md](/Users/naoya/src/exbrand/docs/getting-started_ja.md)
+- [docs/api-guide_ja.md](/Users/naoya/src/exbrand/docs/api-guide_ja.md)
 
-## インストール
+## What It Does
 
-`mix.exs` に依存を追加します。
+- Generate distinct brand types with `defbrand`
+- Safely construct branded values with `new/1` and `new!/1`
+- Add custom validation and normalization with `validate:`
+- Attach `generator:` and `derive:` metadata to brand definitions
+- Auto-generate `Ecto.Type` and `Ecto.ParameterizedType`
+- Conditionally implement `Jason.Encoder`, `JSON.Encoder`, `Phoenix.Param`, and `Phoenix.HTML.Safe`
+- Validate nested map/list payloads with `ExBrand.Schema` and return normalized values including brands
+
+## Installation
+
+Add the dependency to `mix.exs`.
 
 ```elixir
 defp deps do
@@ -29,9 +35,9 @@ defp deps do
 end
 ```
 
-公開パッケージ化されていない前提なら `path:` 参照で利用できます。
+If you are using this repository locally, `path:` is the expected integration style.
 
-## Brand の定義
+## Defining Brands
 
 ```elixir
 defmodule MyApp.Accounts.Types do
@@ -54,21 +60,21 @@ defmodule MyApp.Accounts.Types do
 end
 ```
 
-`defbrand Name, spec` は親モジュール配下に `MyApp.Accounts.Types.Name` を生成します。
+`defbrand Name, spec` generates `MyApp.Accounts.Types.Name` under the parent module.
 
-生成される主な API は次のとおりです。
+Each generated brand module exposes these main APIs:
 
-- `new/1`: `{:ok, brand}` か `{:error, reason}` を返す
-- `new!/1`: 失敗時に `ExBrand.Error` を送出する
-- `unsafe_new/1`: 検証を通さず brand を作る
-- `unwrap/1`: raw 値を取り出す
-- `brand?/1`: その brand の値か判定する
-- `gen/0`: `generator:` の値を返す
-- `__base__/0`, `__name__/0`, `__meta__/0`: 反射用メタ情報を返す
+- `new/1`: returns `{:ok, brand}` or `{:error, reason}`
+- `new!/1`: raises `ExBrand.Error` on failure
+- `unsafe_new/1`: builds a brand without validation
+- `unwrap/1`: extracts the raw value
+- `brand?/1`: checks whether a value belongs to the brand
+- `gen/0`: returns the configured `generator:` value
+- `__base__/0`, `__name__/0`, `__meta__/0`: reflection helpers
 
-`ExBrand.unwrap!/1` は任意の brand から raw 値を取り出します。`ExBrand.unwrap/1` は brand でなければそのまま返します。
+`ExBrand.unwrap!/1` extracts the raw value from any ExBrand value. `ExBrand.unwrap/1` unwraps brands and passes through non-brand values unchanged.
 
-## 利用例
+## Example Usage
 
 ```elixir
 alias MyApp.Accounts.Types
@@ -82,17 +88,17 @@ Types.Email.unwrap(email)
 #=> "user@example.com"
 ```
 
-brand は別モジュールとして生成されるため、`UserID` と `OrderID` がどちらも `:integer` ベースでも混同しにくくなります。
+Because brands are distinct modules, `UserID` and `OrderID` remain separate even if both are backed by `:integer`.
 
-## Base 型
+## Base Types
 
-組み込み base は次の 3 つです。
+Built-in base types are:
 
 - `:integer`
 - `:string`
 - `:binary`
 
-加えて、`ExBrand.Base` の callback を実装した custom base module を使えます。
+You can also use a custom base module that implements `ExBrand.Base`.
 
 ```elixir
 defmodule MyApp.Types.PrefixedString do
@@ -116,27 +122,27 @@ defmodule MyApp.Accounts.Types do
 end
 ```
 
-組み込み custom type として `ExBrand.Type.Email` も含まれています。
+The repository also includes `ExBrand.Type.Email` as a built-in custom base.
 
-## Brand オプション
+## Brand Options
 
-`defbrand` で指定できる主なオプションは次のとおりです。
+The main options supported by `defbrand` are:
 
-- `validate:` 1 引数関数。`true` / `false` / `:ok` / `{:ok, normalized}` / `{:error, reason}` を返せる
-- `error:` `validate:` が `false` を返したときのエラー理由
-- `name:` 表示名。`Inspect` や例外メッセージに使われる
-- `derive:` protocol か protocol のリスト
-- `generator:` property-based testing 向けの任意値
+- `validate:` a unary function returning `true`, `false`, `:ok`, `{:ok, normalized}`, or `{:error, reason}`
+- `error:` the error reason used when `validate:` returns `false`
+- `name:` a display name used by `Inspect` and exceptions
+- `derive:` a protocol or list of protocols
+- `generator:` arbitrary generator metadata for property-based testing
 
-`validate:` が `{:ok, normalized}` を返した場合、正規化済みの raw 値が brand 内部に保存されます。
+If `validate:` returns `{:ok, normalized}`, the normalized raw value is stored inside the brand.
 
-## Ecto / JSON / Phoenix 連携
+## Ecto / JSON / Phoenix Integration
 
-ExBrand は関連ライブラリがロードされているときだけ連携コードを生成します。
+ExBrand only generates integration code when the relevant library is loaded.
 
 ### Ecto
 
-brand ごとに `ecto_type/0` と `ecto_parameterized_type/0` が生えます。
+Each brand gets `ecto_type/0` and `ecto_parameterized_type/0`.
 
 ```elixir
 schema "users" do
@@ -145,19 +151,19 @@ schema "users" do
 end
 ```
 
-`Ecto.Type.cast/2` が使える環境では、文字列から整数 brand への cast も Ecto 側の変換に委譲されます。
+If `Ecto.Type.cast/2` is available, string-to-integer conversion is delegated to Ecto before branding.
 
 ### JSON
 
-`Jason` または `JSON` があれば、brand は raw 値として encode されます。
+If `Jason` or `JSON` is available, brands are encoded as their raw values.
 
 ### Phoenix
 
-`Phoenix.Param` と `Phoenix.HTML.Safe` があれば、brand 自体ではなく raw 値側の protocol 実装へ委譲されます。
+If `Phoenix.Param` and `Phoenix.HTML.Safe` are available, ExBrand delegates to the raw value's protocol implementation instead of exposing the brand struct.
 
 ## Schema DSL
 
-`ExBrand.Schema` は API 入力や外部 payload の検証に使えます。
+`ExBrand.Schema` is intended for validating API input and other external payloads.
 
 ```elixir
 defmodule MyApp.Accounts.UserInput do
@@ -181,35 +187,35 @@ MyApp.Accounts.UserInput.validate(%{
 })
 ```
 
-戻り値は `{:ok, normalized_map}` か `{:error, errors}` です。brand フィールドは brand 値に正規化され、`field:` を使った入力キーの別名も処理されます。
+The return value is `{:ok, normalized_map}` or `{:error, errors}`. Brand fields are normalized into brand values, and aliased input keys are handled through `field:`.
 
-## Runtime 設定
+## Runtime Configuration
 
-schema の実行時挙動は `ExBrand.Schema.set_runtime_config!/1` で切り替えられます。
+Schema runtime behavior can be changed with `ExBrand.Schema.set_runtime_config!/1`.
 
 ```elixir
 ExBrand.Schema.set_runtime_config!(fail_fast: true)
 ExBrand.Schema.set_runtime_config!(deferred_checks: [:enum, :format])
 ```
 
-- `fail_fast: true`: map/list 検証で最初のエラーで停止する
-- `deferred_checks:`: `:enum`, `:format`, `:regex`, `:unique_items`, `:deep_nested` を遅延できる
+- `fail_fast: true`: stop at the first map/list validation error
+- `deferred_checks:`: defer `:enum`, `:format`, `:regex`, `:unique_items`, and `:deep_nested`
 
-## 署名検証
+## Signature Verification
 
-`config :ex_brand, :signature_verification, true` を有効にすると、brand struct に署名を持たせて forged value や mutation を検出できます。`unwrap/1`、`brand?/1`、Phoenix/Ecto 連携もこの検証を尊重します。
+Enable `config :ex_brand, :signature_verification, true` if you need forged or mutated brand structs to be detected. `unwrap/1`, `brand?/1`, and the Phoenix/Ecto integrations all respect this validation.
 
-既定値は `false` です。
+The default is `false`.
 
-## サンプルアプリ
+## Example App
 
-`examples/customer_portal` に Phoenix/Ecto 連携の最小サンプルがあります。brand を schema、changeset、JSON レスポンスでどう扱うかを確認できます。
+`examples/customer_portal` contains a minimal Phoenix/Ecto example showing how brands move through schemas, changesets, and JSON responses.
 
-詳細は [examples/customer_portal/README.md](/Users/naoya/src/exbrand/examples/customer_portal/README.md) を参照してください。
+See [examples/customer_portal/README.md](/Users/naoya/src/exbrand/examples/customer_portal/README.md) for details, or [examples/customer_portal/README_ja.md](/Users/naoya/src/exbrand/examples/customer_portal/README_ja.md) for Japanese.
 
-## 開発
+## Development
 
-代表的なコマンドは次のとおりです。
+Common commands:
 
 ```bash
 mix test
@@ -217,7 +223,7 @@ mix credo
 mix dialyzer
 ```
 
-追加ドキュメント:
+Additional documentation:
 
 - [docs/getting-started.md](/Users/naoya/src/exbrand/docs/getting-started.md)
 - [docs/api-guide.md](/Users/naoya/src/exbrand/docs/api-guide.md)
