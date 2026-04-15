@@ -184,7 +184,7 @@ defmodule ExBrand.Schema.DefinitionTest do
 
   test "constraint profile helpers infer scalar and nested schema profiles" do
     assert Definition.infer_constraint_profile(:number) == {:ok, {:scalar, :number}}
-    assert Definition.infer_constraint_profile(Types.Email) == {:ok, {:brand, :string}}
+    assert Definition.infer_constraint_profile(Types.Email) == {:ok, {:brand, :custom_base}}
 
     assert Definition.infer_constraint_profile(AddressSchema) ==
              {:ok, {:nested_schema, AddressSchema}}
@@ -196,7 +196,7 @@ defmodule ExBrand.Schema.DefinitionTest do
              [:enum, :error, :nullable, :field, :validate]
 
     assert Definition.scalar_profile_for_brand(Types.UserID) == :integer
-    assert Definition.scalar_profile_for_brand(Types.Email) == :string
+    assert Definition.scalar_profile_for_brand(Types.Email) == :custom_base
     assert Definition.scalar_profile_for_base(:binary) == :binary
     assert Definition.scalar_profile_for_base({PrefixedString, prefix: "usr_"}) == :custom_base
   end

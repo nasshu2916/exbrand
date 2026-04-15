@@ -2,6 +2,7 @@ defmodule ExBrand.BaseTest do
   use ExUnit.Case, async: true
 
   alias ExBrand.Base
+  alias ExBrand.Type.Email
   alias ExBrand.TestSupport.CustomBases.PrefixedString
 
   defmodule MissingCallbacksBase do
@@ -12,6 +13,7 @@ defmodule ExBrand.BaseTest do
     assert Base.normalize!(:integer) == :integer
     assert Base.normalize!(:binary) == :binary
     assert Base.normalize!(:string) == :string
+    assert Base.normalize!(Email) == Email
     assert Base.normalize!(PrefixedString) == PrefixedString
 
     assert Base.normalize!({PrefixedString, prefix: "usr_"}) ==
@@ -44,6 +46,7 @@ defmodule ExBrand.BaseTest do
     assert Macro.to_string(Base.type_ast!(:integer)) == "integer()"
     assert Macro.to_string(Base.type_ast!(:binary)) == "binary()"
     assert Macro.to_string(Base.type_ast!(:string)) == "String.t()"
+    assert Macro.to_string(Base.type_ast!(Email)) == "String.t()"
     assert Macro.to_string(Base.type_ast!(PrefixedString)) == "String.t()"
   end
 
@@ -51,10 +54,12 @@ defmodule ExBrand.BaseTest do
     assert Base.validate(1, :integer) == :ok
     assert Base.validate("abc", :binary) == :ok
     assert Base.validate("abc", :string) == :ok
+    assert Base.validate("user@example.com", Email) == :ok
 
     assert Base.validate("1", :integer) == {:error, :invalid_type}
     assert Base.validate(1, :binary) == {:error, :invalid_type}
     assert Base.validate(1, :string) == {:error, :invalid_type}
+    assert Base.validate("invalid", Email) == {:error, :invalid_email}
 
     assert Base.validate("usr_123", {PrefixedString, prefix: "usr_"}) == :ok
     assert Base.validate("abc", {PrefixedString, prefix: "usr_"}) == {:error, :invalid_type}
@@ -63,6 +68,8 @@ defmodule ExBrand.BaseTest do
   test "validate_normalized/2 validates already normalized base definitions" do
     assert Base.validate_normalized(:integer, 1) == :ok
     assert Base.validate_normalized(:integer, "1") == {:error, :invalid_type}
+    assert Base.validate_normalized(Email, "user@example.com") == :ok
+    assert Base.validate_normalized(Email, "invalid") == {:error, :invalid_email}
     assert Base.validate_normalized({PrefixedString, prefix: "usr_"}, "usr_123") == :ok
 
     assert Base.validate_normalized({PrefixedString, prefix: "usr_"}, "abc") ==
@@ -73,6 +80,7 @@ defmodule ExBrand.BaseTest do
     assert Base.ecto_type!(:integer) == :integer
     assert Base.ecto_type!(:binary) == :binary
     assert Base.ecto_type!(:string) == :string
+    assert Base.ecto_type!(Email) == :string
     assert Base.ecto_type!(PrefixedString) == :string
 
     assert Base.ecto_type!({PrefixedString, prefix: "usr_", ecto_type: :binary_id}) ==
