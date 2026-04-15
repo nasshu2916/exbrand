@@ -1,114 +1,187 @@
-# ExBrand 導入ガイド
+# Getting Started
 
-## 目的
+このドキュメントは、ExBrand を既存の Elixir アプリへ導入して brand と schema を使い始めるまでの最短手順をまとめたものです。
 
-ExBrand は、`integer()` や `String.t()` のような primitive 値に対して、意味的な型境界を与えるためのライブラリです。
-
-`UserID` と `OrderID` のように実行時表現が同じ値でも、brand module を分けて `@opaque` な wrapper として扱うことで、値の取り違えを抑制します。
-
-## 基本例
+## 1. 依存を追加する
 
 ```elixir
-defmodule MyApp.Types do
+defp deps do
+  [
+    {:ex_brand, path: "../ex_brand"}
+  ]
+end
+```
+
+```bash
+mix deps.get
+```
+
+## 2. Brand を定義する
+
+まずは feature 単位で brand をまとめるモジュールを作ります。
+
+```elixir
+defmodule MyApp.Accounts.Types do
   use ExBrand
 
   defbrand UserID, :integer
-  defbrand OrderID, :integer
-  defbrand CustomerID, :integer
-  defbrand Email, {:string, validate: &String.contains?(&1, "@"), error: :invalid_email}
-  defbrand PositiveUserID, {:integer, validate: &(&1 > 0), error: :must_be_positive}
+
+  defbrand Email,
+           {:string,
+            validate: fn raw ->
+              normalized = raw |> String.trim() |> String.downcase()
+
+              if String.contains?(normalized, "@") do
+                {:ok, normalized}
+              else
+                {:error, :invalid_email}
+              end
+            end,
+            name: "Email Address"}
 end
 ```
 
-```elixir
-{:ok, user_id} = MyApp.Types.UserID.new(1)
-1 = MyApp.Types.UserID.unwrap(user_id)
-true = MyApp.Types.UserID.valid?(1)
-false = MyApp.Types.UserID.valid?("1")
-{:ok, same_user_id} = MyApp.Types.UserID.cast(user_id)
+これで次のモジュールが生成されます。
 
-{:error, :invalid_email} = MyApp.Types.Email.new("invalid")
+- `MyApp.Accounts.Types.UserID`
+- `MyApp.Accounts.Types.Email`
+
+## 3. Brand を使う
+
+```elixir
+alias MyApp.Accounts.Types
+
+{:ok, user_id} = Types.UserID.new(1)
+Types.UserID.unwrap(user_id)
+#=> 1
+
+Types.UserID.new("1")
+#=> {:error, :invalid_type}
+
+Types.Email.new!("  USER@EXAMPLE.COM  ")
+|> Types.Email.unwrap()
+#=> "user@example.com"
 ```
 
-## 生成される API
+`new/1` は失敗を戻り値で返し、`new!/1` は `ExBrand.Error` を送出します。
 
-生成される各 brand module は、主に次の型と関数を公開します。
+## 4. ルールを追加する
 
-- `@type raw()`
-- `@opaque t()`
-- `new/1`
-- `new!/1`
-- `cast/1`
-- `cast!/1`
-- `unwrap/1`
-- `valid?/1`
-- `gen/0`
-- `brand?/1`
-- `__base__/0`
-- `__name__/0`
-- `__meta__/0`
-- `ecto_type/0`
-- `ecto_parameterized_type/0`
-
-## `defstruct` と一緒に使う
-
-`defbrand` は `defstruct` を持つ module の中でもそのまま定義できます。
-同じ module の関数から `UserID.new!/1` のような短縮名で参照したい場合は、
-`use ExBrand, aliases: [...]` を指定します。
+brand には複数の付加情報を持たせられます。
 
 ```elixir
-defmodule MyApp.Account do
-  use ExBrand, aliases: [UserID, Email]
+defmodule MyApp.Accounts.Types do
+  use ExBrand
 
-  defstruct [:user_id, :email]
-  @type t() :: %__MODULE__{
-          user_id: UserID.t(),
-          email: Email.t()
-        }
-
-  defbrand UserID, :integer
-  defbrand Email, {:string, validate: &String.contains?(&1, "@"), error: :invalid_email}
-
-  def new!(attrs) do
-    %__MODULE__{
-      user_id: UserID.new!(attrs.user_id),
-      email: Email.new!(attrs.email)
-    }
-  end
+  defbrand PositiveUserID,
+           {:integer,
+            validate: &(&1 > 0),
+            error: :must_be_positive,
+            generator: {:integer_generator, min: 1},
+            name: "User ID"}
 end
 ```
 
-`aliases:` を使わない場合は `__MODULE__.UserID.new!(...)` のように完全修飾で参照できます。
+使い分けは次のとおりです。
 
-## Custom Base Type
+- `validate:` 独自検証や正規化
+- `error:` `validate:` が `false` を返したときのエラー理由
+- `generator:` generator のメタデータ
+- `name:` 表示名
+- `derive:` protocol 実装の導出
 
-組み込みの `:integer` / `:binary` / `:string` 以外を使いたい場合は、
-`ExBrand.Base` を実装した module を `defbrand ...` の引数として渡します。
+## 5. Custom Base を使う
+
+組み込み base で足りない場合は `ExBrand.Base` を実装します。
 
 ```elixir
-defmodule MyApp.Types.PrefixedStringBase do
+defmodule MyApp.Types.PrefixedString do
   @behaviour ExBrand.Base
 
   def type_ast(_opts), do: quote(do: String.t())
   def ecto_type(_opts), do: :string
 
   def validate(value, opts) when is_binary(value) do
-    if String.starts_with?(value, Keyword.fetch!(opts, :prefix)) do
-      :ok
-    else
-      {:error, :invalid_type}
-    end
+    prefix = Keyword.fetch!(opts, :prefix)
+    if String.starts_with?(value, prefix), do: :ok, else: {:error, :invalid_type}
   end
 
   def validate(_value, _opts), do: {:error, :invalid_type}
 end
 
-defmodule MyApp.Types do
+defmodule MyApp.Accounts.Types do
   use ExBrand
 
-  defbrand UserID, {MyApp.Types.PrefixedStringBase, prefix: "usr_"}
+  defbrand UserToken, {MyApp.Types.PrefixedString, prefix: "usr_"}
 end
 ```
 
-module 単体も渡せます。設定値が必要な場合だけ
-`{MyApp.Types.PrefixedStringBase, prefix: "usr_"}` のような tuple 形式を使います。
+## 6. Schema DSL を導入する
+
+API 入口の検証には `ExBrand.Schema` を使います。
+
+```elixir
+defmodule MyApp.Accounts.UserPayload do
+  use ExBrand.Schema
+
+  field :user_id, MyApp.Accounts.Types.UserID
+  field :email, {MyApp.Accounts.Types.Email, field: "contactEmail"}
+  field :age, {:integer, minimum: 18, error: :too_young}
+  field :tags, {[{:string, min_length: 2}], min_items: 1, unique_items: true}
+end
+```
+
+```elixir
+MyApp.Accounts.UserPayload.validate(%{
+  "contactEmail" => "user@example.com",
+  user_id: 1,
+  age: 20,
+  tags: ["elixir", "otp"]
+})
+```
+
+成功時は brand を含む正規化済み map が返り、失敗時はフィールドごとのエラー map が返ります。
+
+## 7. Ecto へ組み込む
+
+Ecto がロードされていれば、brand モジュールに `ecto_type/0` が生成されます。
+
+```elixir
+schema "users" do
+  field :user_id, MyApp.Accounts.Types.UserID.ecto_type()
+  field :email, MyApp.Accounts.Types.Email.ecto_type()
+end
+```
+
+changeset では raw 値をそのまま `cast/4` に渡せます。ExBrand 側が brand に変換します。
+
+## 8. Phoenix / JSON へ組み込む
+
+次のライブラリが存在すると、自動で protocol 実装が入ります。
+
+- `Jason` または `JSON`
+- `Phoenix.Param`
+- `Phoenix.HTML.Safe`
+
+そのため、controller や JSON view では raw 値へ手で戻さなくても動く場面があります。ただしレスポンス設計を明示したいなら、`unwrap/1` を使って raw 値へ戻してから組み立てる方が読みやすいです。
+
+## 9. 実行時設定を調整する
+
+schema のエラー収集方針は実行時に切り替えられます。
+
+```elixir
+ExBrand.Schema.set_runtime_config!(fail_fast: true)
+ExBrand.Schema.set_runtime_config!(deferred_checks: [:enum, :format])
+```
+
+テスト中に切り替える場合は、終了時に `:unset` で戻しておくと影響範囲を限定できます。
+
+## 10. 署名検証を有効にする
+
+brand struct の改ざん検知が必要なら、アプリ設定で有効化します。
+
+```elixir
+config :ex_brand, :signature_verification, true
+```
+
+有効時は brand 内部に署名が保存され、改ざん済み struct に対する `unwrap/1` や周辺 adapter の利用が失敗します。
