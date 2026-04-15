@@ -4,7 +4,7 @@ defmodule ExBrand.Builder do
   """
 
   alias ExBrand.Adapter
-  alias ExBrand.Builder.Config
+  alias ExBrand.Builder.{Context, ModuleAst}
   alias ExBrand.DSL
 
   @doc false
@@ -22,142 +22,64 @@ defmodule ExBrand.Builder do
     build_brand_module(module, Keyword.put(opts, :base, base))
   end
 
+  @spec build_brand_module(module(), keyword()) :: Macro.t()
   defp build_brand_module(module, opts) do
     quote do
       defmodule unquote(module) do
         unquote(build_brand_body(module, opts))
       end
 
-      unquote_splicing(build_protocol_impls(module))
+      unquote_splicing(ModuleAst.build_protocol_impls(module))
       unquote_splicing(Adapter.build_external_ast(module))
     end
   end
 
+  @spec build_brand_body(module(), keyword()) :: Macro.t()
   defp build_brand_body(module, opts) do
-    base = Keyword.fetch!(opts, :base)
-    raw_type = ExBrand.Base.type_ast!(base)
-    validate = Keyword.get(opts, :validate)
-    error = Keyword.get(opts, :error)
-    generator = Keyword.get(opts, :generator)
-    name = normalize_name(Keyword.get(opts, :name), module)
-    signature_verification = Config.signature_verification_enabled?()
-    secret = if signature_verification, do: generate_brand_secret(), else: nil
-    derive = normalize_derive(Keyword.get(opts, :derive))
-
-    ast_context = %{
-      module: module,
-      raw_type: raw_type,
-      derive: derive,
-      base: base,
-      error: error,
-      name: name,
-      signature_verification: signature_verification,
-      secret: secret,
-      validate: validate,
-      generator: generator
-    }
+    ast_context = Context.from_opts(module, opts)
 
     quote do
       (unquote_splicing(build_brand_ast_parts(ast_context)))
     end
   end
 
-  defp build_brand_ast_parts(
-         %{
-           module: module,
-           raw_type: raw_type,
-           derive: derive,
-           base: base,
-           error: error,
-           name: name,
-           signature_verification: signature_verification,
-           secret: secret,
-           validate: validate,
-           generator: generator
-         } = ast_context
-       ) do
+  @spec build_brand_ast_parts(Context.t()) :: [Macro.t()]
+  defp build_brand_ast_parts(%Context{} = ast_context) do
     [
-      build_brand_moduledoc_ast(module),
-      build_derive_ast(derive),
-      signature_struct_ast(signature_verification),
-      build_types_ast(raw_type, signature_verification),
-      build_brand_attributes_ast(base, error, name, signature_verification, secret),
-      build_internal_helpers_ast(validate, generator, signature_verification),
+      ModuleAst.build_brand_moduledoc_ast(ast_context.module),
+      ModuleAst.build_derive_ast(ast_context.derive),
+      ModuleAst.signature_struct_ast(ast_context.signature_verification),
+      ModuleAst.build_types_ast(ast_context.raw_type, ast_context.signature_verification),
+      ModuleAst.build_brand_attributes_ast(
+        ast_context.base,
+        ast_context.error,
+        ast_context.name,
+        ast_context.signature_verification,
+        ast_context.secret
+      ),
+      ModuleAst.build_internal_helpers_ast(
+        ast_context.validate,
+        ast_context.generator,
+        ast_context.signature_verification
+      ),
       build_constructor_api_ast(ast_context),
-      build_brand_runtime_api_ast(),
-      build_reflection_api_ast(),
-      Adapter.build_module_ast(module)
+      ModuleAst.build_brand_runtime_api_ast(),
+      ModuleAst.build_reflection_api_ast(),
+      Adapter.build_module_ast(ast_context.module)
     ]
     |> List.flatten()
   end
 
-  defp build_brand_moduledoc_ast(module) do
-    quote do
-      @moduledoc """
-      `#{inspect(unquote(module))}` は ExBrand によって生成された brand module である。
-
-      raw 値の生成には `new/1` または `new!/1` を使い、
-      Web 境界の受け入れには `cast/1` または `cast!/1` を使い、
-      取り出しには `unwrap/1` を使う。
-      """
-    end
-  end
-
-  defp build_derive_ast(nil) do
-    quote do
-    end
-  end
-
-  defp build_derive_ast(derive) do
-    quote do
-      @derive unquote(derive)
-    end
-  end
-
-  defp build_types_ast(raw_type, signature_verification) do
-    quote do
-      @type raw() :: unquote(raw_type)
-      @type meta() :: %{
-              module: module(),
-              name: String.t(),
-              base: ExBrand.Base.spec(),
-              validator: function() | nil,
-              generator: term() | nil,
-              error: term() | nil
-            }
-      unquote(signature_type_ast(signature_verification))
-    end
-  end
-
-  defp build_brand_attributes_ast(base, error, name, signature_verification, secret) do
-    quote do
-      @base unquote(base)
-      @error_reason unquote(error)
-      @brand_name unquote(name)
-      @signature_verification unquote(signature_verification)
-
-      if @signature_verification do
-        @brand_secret unquote(secret)
-      end
-    end
-  end
-
-  defp build_internal_helpers_ast(validate, generator, signature_verification) do
-    quote do
-      defp __validator__, do: unquote(validate)
-      defp __generator__, do: unquote(generator)
-
-      unquote(signature_helpers_ast(signature_verification))
-    end
-  end
-
-  defp build_constructor_api_ast(%{
+  @spec build_constructor_api_ast(Context.t()) :: Macro.t()
+  defp build_constructor_api_ast(%Context{
          base: base,
          validate: validate,
          signature_verification: signature_verification
        }) do
     new_ast = build_optimized_new_ast(base, validate, signature_verification)
-    unsafe_struct_ast = build_brand_struct_from_value_ast(signature_verification)
+
+    unsafe_struct_ast =
+      ModuleAst.build_brand_struct_from_value_ast(signature_verification, quote(do: value))
 
     quote do
       unquote(new_ast)
@@ -190,13 +112,14 @@ defmodule ExBrand.Builder do
     end
   end
 
-  # Optimized new/1 for builtin types without custom validator.
-  # Base type check is inlined as a guard, eliminating all runtime function calls
-  # to Validator and Base modules.
+  # Base type check is inlined as a guard, eliminating runtime calls on the fast path.
+  @spec build_optimized_new_ast(ExBrand.Base.spec(), term(), boolean()) :: Macro.t()
   defp build_optimized_new_ast(base, nil, signature_verification)
        when base in [:integer, :string, :binary] do
     guard = builtin_guard_ast(base)
-    struct_ast = build_brand_struct_from_value_ast(signature_verification)
+
+    struct_ast =
+      ModuleAst.build_brand_struct_from_value_ast(signature_verification, quote(do: value))
 
     quote do
       @doc """
@@ -213,13 +136,13 @@ defmodule ExBrand.Builder do
     end
   end
 
-  # Optimized new/1 for builtin types with custom validator.
-  # Base type check is inlined as a guard, skipping Base.normalize!/1.
-  # Only validate_custom is called at runtime.
+  @spec build_optimized_new_ast(ExBrand.Base.spec(), term(), boolean()) :: Macro.t()
   defp build_optimized_new_ast(base, _validate, signature_verification)
        when base in [:integer, :string, :binary] do
     guard = builtin_guard_ast(base)
-    struct_ast = build_brand_struct_ast(signature_verification)
+
+    struct_ast =
+      ModuleAst.build_brand_struct_ast(signature_verification, quote(do: normalized_value))
 
     quote do
       @doc """
@@ -247,10 +170,10 @@ defmodule ExBrand.Builder do
     end
   end
 
-  # Fallback new/1 for custom base types.
-  # Uses full runtime validation path.
+  @spec build_optimized_new_ast(ExBrand.Base.spec(), term(), boolean()) :: Macro.t()
   defp build_optimized_new_ast(_base, _validate, signature_verification) do
-    struct_ast = build_brand_struct_ast(signature_verification)
+    struct_ast =
+      ModuleAst.build_brand_struct_ast(signature_verification, quote(do: normalized_value))
 
     quote do
       @doc """
@@ -271,209 +194,8 @@ defmodule ExBrand.Builder do
     end
   end
 
+  @spec builtin_guard_ast(:integer | :string | :binary) :: Macro.t()
   defp builtin_guard_ast(:integer), do: quote(do: is_integer(value))
   defp builtin_guard_ast(:string), do: quote(do: is_binary(value))
   defp builtin_guard_ast(:binary), do: quote(do: is_binary(value))
-
-  defp build_brand_struct_from_value_ast(true) do
-    quote do
-      %__MODULE__{__value__: value, __signature__: __sign__(value)}
-    end
-  end
-
-  defp build_brand_struct_from_value_ast(false) do
-    quote do
-      %__MODULE__{__value__: value}
-    end
-  end
-
-  defp build_brand_runtime_api_ast do
-    quote do
-      @doc """
-      brand 値から raw 値を明示的に取り出す。
-      """
-      @spec unwrap(t()) :: raw()
-      def unwrap(%__MODULE__{__value__: value} = brand) do
-        if __valid_signature__(brand) do
-          value
-        else
-          raise ArgumentError, "invalid forged or mutated brand value for #{__name__()}"
-        end
-      end
-
-      @doc """
-      property-based testing 向けの generator を返す。
-
-      `generator:` に 0 引数関数を渡した場合は、その場で評価する。
-      """
-      @spec gen() :: term()
-      def gen, do: ExBrand.Builder.resolve_generator(__generator__())
-
-      @doc """
-      渡された値が当該 brand の struct かを返す。
-      """
-      @spec brand?(term()) :: boolean()
-      def brand?(%__MODULE__{} = brand), do: __valid_signature__(brand)
-      def brand?(_), do: false
-    end
-  end
-
-  defp build_reflection_api_ast do
-    quote do
-      @doc """
-      この brand の base type を返す。
-      """
-      @spec __base__() :: ExBrand.Base.spec()
-      def __base__, do: @base
-
-      @doc """
-      この brand の表示名を返す。
-      """
-      @spec __name__() :: String.t()
-      def __name__, do: @brand_name
-
-      @doc """
-      この brand の定義メタデータを返す。
-      """
-      @spec __meta__() :: meta()
-      def __meta__ do
-        %{
-          module: __MODULE__,
-          name: @brand_name,
-          base: @base,
-          validator: __validator__(),
-          generator: __generator__(),
-          error: @error_reason
-        }
-      end
-    end
-  end
-
-  defp build_protocol_impls(module) do
-    [
-      build_inspect_impl(module),
-      build_string_chars_impl(module)
-    ]
-  end
-
-  defp build_inspect_impl(module) do
-    quote do
-      defimpl Inspect, for: unquote(module) do
-        import Inspect.Algebra
-
-        def inspect(value, opts) do
-          concat([
-            "#",
-            unquote(module).__name__(),
-            "<",
-            to_doc(unquote(module).unwrap(value), opts),
-            ">"
-          ])
-        end
-      end
-    end
-  end
-
-  defp build_string_chars_impl(module) do
-    quote do
-      defimpl String.Chars, for: unquote(module) do
-        def to_string(value) do
-          value
-          |> unquote(module).unwrap()
-          |> Kernel.to_string()
-        end
-      end
-    end
-  end
-
-  defp signature_struct_ast(true) do
-    quote do
-      @enforce_keys [:__value__, :__signature__]
-      defstruct [:__value__, :__signature__]
-    end
-  end
-
-  defp signature_struct_ast(false) do
-    quote do
-      @enforce_keys [:__value__]
-      defstruct [:__value__]
-    end
-  end
-
-  defp signature_type_ast(true) do
-    quote do
-      @opaque t() :: %__MODULE__{__value__: raw(), __signature__: integer()}
-    end
-  end
-
-  defp signature_type_ast(false) do
-    quote do
-      @opaque t() :: %__MODULE__{__value__: raw()}
-    end
-  end
-
-  defp signature_helpers_ast(true) do
-    quote do
-      defp __sign__(value), do: :erlang.phash2({@brand_secret, value})
-
-      defp __valid_signature__(%__MODULE__{__value__: value, __signature__: signature}) do
-        signature == __sign__(value)
-      end
-    end
-  end
-
-  defp signature_helpers_ast(false) do
-    quote do
-      defp __valid_signature__(%__MODULE__{}), do: true
-    end
-  end
-
-  defp build_brand_struct_ast(true) do
-    quote do
-      %__MODULE__{
-        __value__: normalized_value,
-        __signature__: __sign__(normalized_value)
-      }
-    end
-  end
-
-  defp build_brand_struct_ast(false) do
-    quote do
-      %__MODULE__{__value__: normalized_value}
-    end
-  end
-
-  defp normalize_derive(nil), do: nil
-  defp normalize_derive(derive) when is_atom(derive), do: normalize_derive([derive])
-
-  defp normalize_derive(derive) when is_list(derive) do
-    derive
-    |> List.wrap()
-    |> Enum.reject(&(&1 == Inspect))
-    |> case do
-      [] -> nil
-      list -> list
-    end
-  end
-
-  defp normalize_derive(other) do
-    raise ArgumentError, "derive must be a protocol or list of protocols, got: #{inspect(other)}"
-  end
-
-  defp normalize_name(nil, module) do
-    module
-    |> Module.split()
-    |> List.last()
-  end
-
-  defp normalize_name(name, _module) when is_binary(name), do: name
-  defp normalize_name(name, _module) when is_atom(name), do: Atom.to_string(name)
-
-  defp normalize_name(other, _module) do
-    raise ArgumentError, "name must be a string or atom, got: #{inspect(other)}"
-  end
-
-  defp generate_brand_secret do
-    :crypto.strong_rand_bytes(32)
-  end
 end
