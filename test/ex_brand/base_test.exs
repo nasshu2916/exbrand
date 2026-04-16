@@ -2,8 +2,8 @@ defmodule ExBrand.BaseTest do
   use ExUnit.Case, async: true
 
   alias ExBrand.Base
-  alias ExBrand.Type.Email
   alias ExBrand.TestSupport.CustomBases.PrefixedString
+  alias ExBrand.Type.Email
 
   defmodule MissingCallbacksBase do
     def validate(_value, _opts), do: :ok

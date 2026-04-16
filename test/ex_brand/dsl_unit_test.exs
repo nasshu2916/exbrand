@@ -2,8 +2,8 @@ defmodule ExBrand.DSLUnitTest do
   use ExUnit.Case, async: true
 
   alias ExBrand.DSL
-  alias ExBrand.Type.Email
   alias ExBrand.TestSupport.CustomBases.PrefixedString
+  alias ExBrand.Type.Email
 
   test "expand_name!/1 accepts aliases and atoms" do
     assert DSL.expand_name!({:__aliases__, [], [:Foo, :Bar]}) == Foo.Bar
