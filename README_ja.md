@@ -223,7 +223,7 @@ mix credo
 mix dialyzer
 ```
 
-追加ドキュメント:
+関連ドキュメント:
 
 - [docs/getting-started_ja.md](/Users/naoya/src/exbrand/docs/getting-started_ja.md)
 - [docs/api-guide_ja.md](/Users/naoya/src/exbrand/docs/api-guide_ja.md)
